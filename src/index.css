@@ -1,0 +1,314 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  
+  html.light * {
+    border-color: rgba(0, 0, 0, 0.08);
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  body.dark, html.dark body {
+    background-color: #020617;
+    color: #f8fafc;
+  }
+
+  body.light, html.light body {
+    background-color: #f8fafc;
+    color: #0f172a;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 4px;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+/* Hide scrollbar utility for touch/swipe strips */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Mobile smooth touch scrolling */
+.touch-pan-x {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe area inset utilities for notched phones */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+
+/* Screen mode: hide print-only summary elements */
+.print-summary-header,
+[data-print-header="true"],
+.print-only,
+.print-watermark {
+  display: none !important;
+}
+
+/* Print Optimization & PDF Export Media Query */
+@media print {
+  @page {
+    size: auto;
+    margin: 12mm 15mm 15mm 15mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 1. Hide interactive app navigation, modals, and screen-only controls */
+  nav, 
+  header, 
+  footer, 
+  aside,
+  .no-print, 
+  [data-no-print="true"],
+  button:not(.print-preserve),
+  input:not(.print-preserve),
+  select:not(.print-preserve) {
+    display: none !important;
+  }
+
+  /* 2. Ensure printable report containers are clean, isolated, and borderless */
+  #executive-report-document, 
+  #interactive-dashboard-container,
+  #report-container,
+  #print-preview-rendered-document,
+  [data-printable-report="true"] {
+    display: block !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  #print-preview-modal-root {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    inset: auto !important;
+  }
+
+  /* 3. Automatic CSS Injected Summary Header (Pseudo-element fallback) */
+  /* Automatically generates an executive summary header bar from dataset data-* attributes */
+  [data-inject-summary-header="true"]::before,
+  [data-dataset-name]:not(:has(.print-summary-header))::before {
+    content: 
+      "DATASET AUDIT REPORT  •  EXECUTIVE SUMMARY DOSSIER\A"
+      "──────────────────────────────────────────────────────────────────────────────────────────\A"
+      "Dataset:        " attr(data-dataset-name, "Active Dataset") "\A"
+      "Observations:   " attr(data-dataset-rows, "N/A") "  |  Dimensions: " attr(data-dataset-cols, "N/A") "  |  Health Score: " attr(data-dataset-health, "100%") "\A"
+      "Pipeline Source:" attr(data-dataset-source, "Direct Ingestion") "  |  Classification: " attr(data-dataset-classification, "RESTRICTED / CONFIDENTIAL") "\A"
+      "Generated:      " attr(data-dataset-date) "  |  Prepared By: " attr(data-dataset-author, "Data Analytics Team") " (" attr(data-dataset-org, "Enterprise Analytics") ")";
+    display: block !important;
+    white-space: pre-wrap !important;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 8.5pt !important;
+    line-height: 1.6 !important;
+    font-weight: 600 !important;
+    color: #0f172a !important;
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-top: 4px solid #0284c7 !important;
+    border-radius: 8px !important;
+    padding: 14px 18px !important;
+    margin-bottom: 24px !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  /* 4. Rich Injected Print Summary Header Component */
+  .print-summary-header,
+  [data-print-header="true"] {
+    display: block !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+    border-top: 4px solid #0284c7 !important;
+    border-radius: 8px !important;
+    padding: 16px 20px !important;
+    margin: 0 0 24px 0 !important;
+    box-shadow: none !important;
+  }
+
+  .print-summary-header .print-header-top {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .print-summary-header .print-brand-title {
+    font-size: 15pt !important;
+    font-weight: 800 !important;
+    color: #0f172a !important;
+    letter-spacing: -0.02em !important;
+    margin: 0 !important;
+    line-height: 1.2 !important;
+  }
+
+  .print-summary-header .print-badge {
+    display: inline-block !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 7.5pt !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    padding: 3px 8px !important;
+    border-radius: 4px !important;
+    background: #f1f5f9 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #0284c7 !important;
+    letter-spacing: 0.05em !important;
+  }
+
+  .print-summary-header .print-meta-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 10px !important;
+    font-size: 8pt !important;
+  }
+
+  .print-summary-header .print-meta-item {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    padding: 8px 10px !important;
+    box-sizing: border-box !important;
+  }
+
+  .print-summary-header .print-meta-label {
+    font-size: 6.5pt !important;
+    text-transform: uppercase !important;
+    color: #64748b !important;
+    font-weight: 700 !important;
+    margin-bottom: 2px !important;
+    letter-spacing: 0.06em !important;
+    font-family: 'JetBrains Mono', monospace !important;
+  }
+
+  .print-summary-header .print-meta-val {
+    font-size: 8.5pt !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* 5. Injected Running Watermark / Footer */
+  .print-watermark {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    font-size: 7pt !important;
+    color: #94a3b8 !important;
+    border-top: 1px solid #e2e8f0 !important;
+    padding-top: 8px !important;
+    margin-top: 24px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* 6. High-Contrast Print Adjustments for Dark Backgrounds */
+  #executive-report-document *,
+  #interactive-dashboard-container * {
+    text-shadow: none !important;
+    filter: none !important;
+  }
+
+  #executive-report-document .bg-slate-900,
+  #executive-report-document .bg-slate-950,
+  #executive-report-document .bg-slate-850,
+  #interactive-dashboard-container .bg-slate-900,
+  #interactive-dashboard-container .bg-slate-950 {
+    background: #ffffff !important;
+    border-color: #e2e8f0 !important;
+    color: #0f172a !important;
+  }
+
+  #executive-report-document .text-white,
+  #interactive-dashboard-container .text-white {
+    color: #0f172a !important;
+  }
+
+  #executive-report-document .text-slate-300,
+  #executive-report-document .text-slate-400,
+  #interactive-dashboard-container .text-slate-300,
+  #interactive-dashboard-container .text-slate-400 {
+    color: #475569 !important;
+  }
+
+  /* 7. Typography & Pagination Page Break Controls */
+  h1, h2, h3, h4, .print-header-top {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .p-4, .p-5, .p-6, tr, table, .print-meta-item, .stat-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.datahub.desktop",
+  "productName": "DataHub Desktop",
+  "copyright": "Copyright © 2026 Remix DataHub Suite",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "dist/**/*",
+    "desktop/electron-main.cjs",
+    "desktop/preload.cjs",
+    "public/**/*",
+    "package.json"
+  ],
+  "main": "desktop/electron-main.cjs",
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "public/favicon.ico",
+    "legalTrademarks": "DataHub Enterprise Intelligence",
+    "requestedExecutionLevel": "asInvoker"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "DataHub Desktop",
+    "installerIcon": "public/favicon.ico",
+    "uninstallerIcon": "public/favicon.ico",
+    "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true
+  },
+  "portable": {
+    "artifactName": "DataHub-Portable-${version}.exe"
+  }
+}

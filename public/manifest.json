@@ -1,0 +1,55 @@
+{
+  "id": "/",
+  "name": "Remix DataHub - Collection & Analysis Suite",
+  "short_name": "DataHub",
+  "description": "Comprehensive intelligence suite for qualitative and quantitative research, causal analysis, and field operations.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#4f46e5",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Upload & Clean",
+      "short_name": "Upload",
+      "description": "Ingest and cleanse CSV/Excel datasets",
+      "url": "/?tab=upload",
+      "icons": [{ "src": "/favicon.png", "sizes": "64x64" }]
+    },
+    {
+      "name": "Data Analysis",
+      "short_name": "Analysis",
+      "description": "Exploratory data analysis & statistical tools",
+      "url": "/?tab=analysis",
+      "icons": [{ "src": "/favicon.png", "sizes": "64x64" }]
+    },
+    {
+      "name": "Comms & Ops Hub",
+      "short_name": "Ops Hub",
+      "description": "Live operations, chat & dispatches",
+      "url": "/?tab=operations",
+      "icons": [{ "src": "/favicon.png", "sizes": "64x64" }]
+    }
+  ]
+}

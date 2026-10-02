@@ -1,0 +1,12 @@
+{
+  "name": "Remix DataHub - Collection \u0026 Analysis Suite",
+  "description": "Comprehensive intelligence suite for qualitative and quantitative research, featuring Admin Observability Command Center & real-time telemetry, Causal Inference & Counterfactuals, NotebookLM-style Executive Audio Debriefs, Prescriptive Goal-Seeking, Adversarial AI Council, Interactive Scrollytelling, Streaming Drift & Self-Healing Pipelines, AutoML, Cohort Analytics, and Privacy Governance.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

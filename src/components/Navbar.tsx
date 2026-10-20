@@ -25,7 +25,9 @@ import {
   Compass,
   HelpCircle,
   Radio,
-  Monitor
+  Monitor,
+  LayoutDashboard,
+  ChevronLeft
 } from 'lucide-react';
 import { Dataset, UserProfile, AppTab } from '../types';
 import { exportToCSV, exportToExcel, exportToJSON } from '../utils/dataEngine';
@@ -48,6 +50,7 @@ interface NavbarProps {
   onOpenShareModal?: () => void;
   onOpenCommsHub?: () => void;
   onOpenDesktopExe?: () => void;
+  onOpenAllTools?: () => void;
   user?: UserProfile | null;
   onOpenAuth?: (mode?: 'signin' | 'signup') => void;
   onLogout?: () => void;
@@ -69,6 +72,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenShareModal,
   onOpenCommsHub,
   onOpenDesktopExe,
+  onOpenAllTools,
   user,
   onOpenAuth,
   onLogout,
@@ -79,6 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [exportOpen, setExportOpen] = React.useState(false);
   const [datasetDropdownOpen, setDatasetDropdownOpen] = React.useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = React.useState(false);
+  const [workspaceDropdownOpen, setWorkspaceDropdownOpen] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const { isDark } = useTheme();
 
@@ -95,6 +100,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   const navigationTabs = [
+    {
+      id: 'dashboard',
+      name: 'All-in-One Dashboard',
+      shortName: 'Dashboard',
+      icon: LayoutDashboard,
+      iconColor: 'text-indigo-400',
+      activeGradient: 'from-indigo-600 via-indigo-500 to-cyan-500',
+      badge: 'All-in-One',
+      description: 'Unified command center: live metrics, analysis, grid, forecast & all features in one place',
+    },
     {
       id: 'upload',
       name: 'Upload & Clean',
@@ -216,33 +231,122 @@ export const Navbar: React.FC<NavbarProps> = ({
               <AppLogo size="md" showSubtitle={true} />
             </div>
 
-            {/* Desktop Navigation Tabs */}
-            <nav className={`hidden lg:flex items-center p-1 rounded-xl border transition-colors ${
-              isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100/90 border-slate-200'
-            }`}>
-              {navigationTabs.map(tab => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    id={`tab-${tab.id}-btn`}
-                    onClick={() => handleTabChange(tab.id as any)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                      isActive
-                        ? `bg-gradient-to-r ${tab.activeGradient} text-white shadow-md shadow-indigo-600/30 font-bold`
-                        : isDark ? 'text-slate-300 hover:text-white hover:bg-slate-800/40' : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+            {/* Desktop Navigation: Focused All-in-One Dashboard Center & Workspace Switcher */}
+            <div className="hidden lg:flex items-center gap-2">
+              {/* Primary Anchor: All-in-One Dashboard */}
+              <button
+                id="main-dashboard-nav-btn"
+                onClick={() => handleTabChange('dashboard')}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                  activeTab === 'dashboard'
+                    ? 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 text-white shadow-indigo-600/30'
+                    : isDark
+                      ? 'bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white'
+                      : 'bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 shadow-xs'
+                }`}
+                title="All-in-One Dashboard: Command center uniting all features in one place"
+              >
+                <LayoutDashboard className={`w-4 h-4 ${activeTab === 'dashboard' ? 'text-white' : 'text-indigo-400'}`} />
+                <span>All-in-One Dashboard</span>
+                {activeTab === 'dashboard' && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/20 text-white font-bold ml-0.5">
+                    All Features
+                  </span>
+                )}
+              </button>
+
+              {/* If on another tab, show return button */}
+              {activeTab !== 'dashboard' && (
+                <button
+                  onClick={() => handleTabChange('dashboard')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600/15 hover:bg-indigo-600/25 border border-indigo-500/30 text-indigo-300 hover:text-white transition-all shadow-xs"
+                  title="Return to the All-in-One Dashboard"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Return to Dashboard</span>
+                </button>
+              )}
+
+              {/* Compact Workspace Switcher Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setWorkspaceDropdownOpen(!workspaceDropdownOpen)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                    activeTab !== 'dashboard'
+                      ? isDark 
+                        ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-300'
+                        : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                      : isDark
+                        ? 'bg-slate-900/70 hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white'
+                        : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 hover:text-slate-900 shadow-xs'
+                  }`}
+                  title="Select or jump to dedicated workspace"
+                >
+                  <span className="truncate max-w-[140px]">
+                    {activeTab === 'dashboard'
+                      ? 'Workspaces'
+                      : navigationTabs.find(t => t.id === activeTab)?.name || 'Workspaces'}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${workspaceDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {workspaceDropdownOpen && (
+                  <div
+                    className={`absolute left-0 mt-2 w-80 rounded-2xl border shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95 duration-100 ${
+                      isDark ? 'bg-slate-900 border-slate-800 shadow-black/80' : 'bg-white border-slate-200 shadow-slate-300/50'
                     }`}
+                    onMouseLeave={() => setWorkspaceDropdownOpen(false)}
                   >
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : tab.iconColor}`} />
-                    <span>{tab.name}</span>
-                    {tab.id === 'supervisor' && activeSupervisor && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
+                    <div className={`px-3 py-1.5 border-b text-[11px] font-semibold uppercase tracking-wider flex items-center justify-between ${
+                      isDark ? 'border-slate-800 text-slate-400' : 'border-slate-100 text-slate-500'
+                    }`}>
+                      <span>Platform Workspaces</span>
+                      <span className="text-[10px] font-mono text-indigo-400">11 Tools</span>
+                    </div>
+
+                    <div className="max-h-96 overflow-y-auto py-1 space-y-0.5 px-1.5">
+                      {navigationTabs.map(tab => {
+                        const Icon = tab.icon;
+                        const isActive = activeTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            onClick={() => {
+                              handleTabChange(tab.id as any);
+                              setWorkspaceDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center gap-2.5 transition-colors ${
+                              isActive
+                                ? isDark ? 'bg-indigo-600/20 text-white font-bold border border-indigo-500/30' : 'bg-indigo-50 text-indigo-900 font-bold border border-indigo-200'
+                                : isDark ? 'text-slate-300 hover:bg-slate-800/60 hover:text-white' : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                              isActive ? 'bg-indigo-600 text-white' : isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              <Icon className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <span className="truncate font-semibold">{tab.name}</span>
+                                <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded ${
+                                  isActive ? 'bg-indigo-500/30 text-indigo-200' : 'bg-slate-800 text-slate-400'
+                                }`}>
+                                  {tab.badge}
+                                </span>
+                              </div>
+                              <p className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {tab.description}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Right Action Items & Dataset Selector */}
             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -731,32 +835,23 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Mobile Horizontal Scrollable Tab Strip (Under Top Header) */}
-        <div className={`lg:hidden border-t px-2 py-1.5 overflow-x-auto no-scrollbar touch-pan-x flex items-center gap-1.5 ${
-          isDark ? 'border-slate-800/80 bg-slate-950/60' : 'border-slate-100 bg-slate-50/80'
-        }`}>
-          {navigationTabs.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => handleTabChange(tab.id as any)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all shrink-0 min-h-[38px] ${
-                  isActive
-                    ? `bg-gradient-to-r ${tab.activeGradient} text-white shadow-md shadow-indigo-600/30 font-bold`
-                    : isDark ? 'text-slate-300 hover:text-white bg-slate-900/80 border border-slate-800/80' : 'text-slate-700 hover:text-slate-900 bg-white border border-slate-200 shadow-xs'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : tab.iconColor}`} />
-                <span>{tab.shortName}</span>
-                {tab.id === 'supervisor' && activeSupervisor && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
-                )}
-              </button>
-            );
-          })}
-        </div>
+        {/* Mobile Sub-Header: Clean Return to Dashboard Banner if on another view */}
+        {activeTab !== 'dashboard' && (
+          <div className={`lg:hidden border-t px-3 py-1.5 flex items-center justify-between text-xs ${
+            isDark ? 'border-slate-800/80 bg-slate-950/80 text-slate-300' : 'border-slate-100 bg-slate-50 text-slate-700'
+          }`}>
+            <span className="font-semibold truncate">
+              {navigationTabs.find(t => t.id === activeTab)?.name || 'Workspace Tool'}
+            </span>
+            <button
+              onClick={() => handleTabChange('dashboard')}
+              className="px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 font-bold flex items-center gap-1 hover:text-white transition-colors"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Back to Dashboard</span>
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Slide-In Mobile Drawer */}
@@ -947,6 +1042,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
+              {onOpenAllTools && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAllTools();
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 text-white text-xs font-bold shadow-md shadow-purple-600/30 flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-white animate-pulse" />
+                  <span>All 24 Tools Launcher</span>
+                </button>
+              )}
+
               {onNavigateToLanding && (
                 <button
                   onClick={() => {
@@ -1004,64 +1112,76 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       )}
 
-      {/* Mobile Fixed Bottom Navigation Bar (Phone Quick Access) */}
+      {/* Mobile Fixed Bottom Navigation Bar (Phone-Optimized 4-Anchor Dock) */}
       <div className={`sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t backdrop-blur-xl px-2 py-1.5 flex items-center justify-around pb-safe transition-colors ${
         isDark ? 'bg-slate-950/95 border-slate-800 text-slate-300' : 'bg-white/95 border-slate-200 text-slate-700 shadow-lg'
       }`}>
+        {/* 1. Mobile Dashboard */}
         <button
-          onClick={() => handleTabChange('upload')}
-          className={`flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl transition-all min-w-[58px] ${
-            activeTab === 'upload'
+          onClick={() => handleTabChange('dashboard')}
+          className={`flex flex-col items-center justify-center gap-1 py-1 px-2.5 rounded-xl transition-all min-w-[56px] ${
+            activeTab === 'dashboard'
               ? 'text-cyan-400 font-bold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
+          title="Phone Dashboard"
         >
-          <UploadCloud className={`w-5 h-5 ${activeTab === 'upload' ? 'text-cyan-400 scale-110' : 'text-slate-400'}`} />
-          <span className="text-[10px] leading-none">Upload</span>
+          <LayoutDashboard className={`w-5 h-5 ${activeTab === 'dashboard' ? 'text-cyan-400 scale-110' : 'text-slate-400'}`} />
+          <span className="text-[10px] leading-none">Dashboard</span>
         </button>
 
+        {/* 2. Field Surveys & GPS Collection */}
         <button
-          onClick={() => handleTabChange('analysis')}
-          className={`flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl transition-all min-w-[58px] ${
-            activeTab === 'analysis'
+          onClick={() => handleTabChange('collection')}
+          className={`flex flex-col items-center justify-center gap-1 py-1 px-2.5 rounded-xl transition-all min-w-[56px] ${
+            activeTab === 'collection'
               ? 'text-indigo-400 font-bold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
+          title="Field Surveys & Mobile Collection"
         >
-          <BarChart3 className={`w-5 h-5 ${activeTab === 'analysis' ? 'text-indigo-400 scale-110' : 'text-slate-400'}`} />
-          <span className="text-[10px] leading-none">Analyze</span>
+          <Layers className={`w-5 h-5 ${activeTab === 'collection' ? 'text-indigo-400 scale-110' : 'text-slate-400'}`} />
+          <span className="text-[10px] leading-none">Collect</span>
         </button>
 
+        {/* 3. Operations & Team Comms */}
         <button
-          onClick={() => handleTabChange('grid')}
-          className={`flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl transition-all min-w-[58px] ${
-            activeTab === 'grid'
-              ? 'text-emerald-400 font-bold'
+          onClick={() => handleTabChange('operations')}
+          className={`flex flex-col items-center justify-center gap-1 py-1 px-2.5 rounded-xl transition-all min-w-[56px] relative ${
+            activeTab === 'operations'
+              ? 'text-cyan-400 font-bold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
+          title="Live Team & County Operations Comms"
         >
-          <Table className={`w-5 h-5 ${activeTab === 'grid' ? 'text-emerald-400 scale-110' : 'text-slate-400'}`} />
-          <span className="text-[10px] leading-none">Grid</span>
+          <span className="relative">
+            <Radio className={`w-5 h-5 ${activeTab === 'operations' ? 'text-cyan-400 scale-110' : 'text-slate-400'}`} />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          </span>
+          <span className="text-[10px] leading-none">Comms</span>
         </button>
 
+        {/* 4. All Tools Sheet Launcher */}
         <button
-          onClick={() => handleTabChange('team')}
-          className={`flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl transition-all min-w-[58px] ${
-            activeTab === 'team'
-              ? 'text-teal-400 font-bold'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
+          onClick={() => {
+            if (onOpenAllTools) onOpenAllTools();
+            else handleTabChange('analysis');
+          }}
+          className="flex flex-col items-center justify-center gap-1 py-1 px-2.5 rounded-xl transition-all min-w-[56px] text-purple-400 hover:text-purple-300"
+          title="Open All 24 Tools"
         >
-          <Users className={`w-5 h-5 ${activeTab === 'team' ? 'text-teal-400 scale-110' : 'text-slate-400'}`} />
-          <span className="text-[10px] leading-none">Team</span>
+          <Sparkles className="w-5 h-5 text-purple-400 animate-pulse" />
+          <span className="text-[10px] leading-none font-bold">Tools</span>
         </button>
 
+        {/* 5. Mobile Drawer Menu */}
         <button
           onClick={() => setMobileMenuOpen(true)}
-          className="flex flex-col items-center justify-center gap-1 py-1 px-3 rounded-xl transition-all min-w-[58px] text-slate-400 hover:text-slate-200"
+          className="flex flex-col items-center justify-center gap-1 py-1 px-2.5 rounded-xl transition-all min-w-[56px] text-slate-400 hover:text-slate-200"
+          title="More Options"
         >
-          <Menu className="w-5 h-5 text-indigo-400" />
-          <span className="text-[10px] leading-none">More</span>
+          <Menu className="w-5 h-5 text-slate-400" />
+          <span className="text-[10px] leading-none">Menu</span>
         </button>
       </div>
     </>

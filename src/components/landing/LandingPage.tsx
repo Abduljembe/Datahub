@@ -24,7 +24,8 @@ import {
   Code2,
   Sliders,
   Check,
-  Play
+  Play,
+  User
 } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { AppLogo } from '../AppLogo';
@@ -44,6 +45,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const [activeFeatureTab, setActiveFeatureTab] = useState<'profiler' | 'cleaner' | 'anomaly' | 'stats' | 'dashboard' | 'simulation'>('dashboard');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+
+  const handleAccessDashboard = () => {
+    if (user) {
+      onEnterApp();
+    } else {
+      onOpenAuth('signin');
+    }
+  };
 
   const featureTabs = [
     { id: 'dashboard', label: 'Interactive Dashboard', icon: BarChart3 },
@@ -81,7 +90,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           
           {/* Brand Logo */}
-          <div className="cursor-pointer" onClick={onEnterApp}>
+          <div className="cursor-pointer" onClick={handleAccessDashboard}>
             <AppLogo size="md" showBadge={true} badgeText="Enterprise" />
           </div>
 
@@ -109,6 +118,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <span>Open Workspace</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    className="p-2 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20"
+                    title="Sign Out"
+                  >
+                    Sign Out
+                  </button>
+                )}
               </div>
             ) : (
               <>
@@ -125,11 +143,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   Create Account
                 </button>
                 <button
-                  onClick={onEnterApp}
+                  onClick={() => onOpenAuth('signin')}
                   className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-1.5 transition-all"
                 >
-                  <span>Launch Live App</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <Lock className="w-3.5 h-3.5 text-cyan-200" />
+                  <span>Enter Dashboard</span>
                 </button>
               </>
             )}
@@ -168,23 +186,43 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </p>
 
         {/* CTA Button Group */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto mb-14">
-          <button
-            onClick={onEnterApp}
-            className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/40 flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
-          >
-            <span>Launch Live Workspace</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-          
-          <button
-            onClick={() => onOpenAuth('signin')}
-            className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-200 hover:text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md"
-          >
-            <Lock className="w-4 h-4 text-cyan-400" />
-            <span>Sign In / Demo Access</span>
-          </button>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto mb-4">
+          {user ? (
+            <button
+              onClick={onEnterApp}
+              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/40 flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+            >
+              <span>Open Live Workspace</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => onOpenAuth('signin')}
+                className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/40 flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+              >
+                <Lock className="w-4 h-4 text-cyan-200" />
+                <span>Sign In to Access Dashboard</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              
+              <button
+                onClick={() => onOpenAuth('signup')}
+                className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-200 hover:text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md"
+              >
+                <User className="w-4 h-4 text-indigo-400" />
+                <span>Create Free Account</span>
+              </button>
+            </>
+          )}
         </div>
+
+        {!user && (
+          <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mb-10">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Secure Access: Authentication required before entering dashboard</span>
+          </div>
+        )}
 
         {/* Trust Badges & Performance Metrics */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl mx-auto pt-6 border-t border-slate-800/60">
@@ -258,11 +296,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
             
             <button
-              onClick={onEnterApp}
+              onClick={handleAccessDashboard}
               className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold transition-all"
             >
-              <span>Try Live with Real Data</span>
-              <ArrowRight className="w-3 h-3" />
+              {user ? (
+                <>
+                  <span>Open Full Workspace</span>
+                  <ArrowRight className="w-3 h-3" />
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3 h-3 text-cyan-300" />
+                  <span>Sign In to Access Real Data</span>
+                  <ArrowRight className="w-3 h-3" />
+                </>
+              )}
             </button>
           </div>
 
@@ -394,8 +442,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       <p className="text-[11px] text-slate-400">Z-Score: +3.82 σ (Extreme positive variance)</p>
                     </div>
                   </div>
-                  <button onClick={onEnterApp} className="px-3 py-1 rounded-lg bg-slate-800 text-indigo-300 font-semibold hover:text-white">
-                    Apply Winsorization
+                  <button onClick={handleAccessDashboard} className="px-3 py-1 rounded-lg bg-slate-800 text-indigo-300 font-semibold hover:text-white">
+                    {user ? 'Apply Winsorization' : 'Sign In to Apply'}
                   </button>
                 </div>
               </div>
@@ -556,10 +604,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </p>
               </div>
               <button
-                onClick={onEnterApp}
+                onClick={handleAccessDashboard}
                 className="px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 flex items-center gap-2 shrink-0 transition-all hover:scale-105"
               >
-                <span>Try Team Sharing</span>
+                <span>{user ? 'Try Team Sharing' : 'Sign In for Team Sharing'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -655,10 +703,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
 
             <button
-              onClick={onEnterApp}
+              onClick={handleAccessDashboard}
               className="mt-8 w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-all"
             >
-              Start Free Explorer
+              {user ? 'Open Free Explorer' : 'Sign In to Start Free'}
             </button>
           </div>
 
@@ -788,19 +836,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               Experience the power of real-time in-browser data cleaning, statistical modeling, and automated executive dashboards today.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button
-                onClick={onEnterApp}
-                className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/40 flex items-center justify-center gap-2 transition-all hover:scale-105"
-              >
-                <span>Launch Free Live Workspace</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => onOpenAuth('signup')}
-                className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-bold text-sm transition-all"
-              >
-                Create Account
-              </button>
+              {user ? (
+                <button
+                  onClick={onEnterApp}
+                  className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/40 flex items-center justify-center gap-2 transition-all hover:scale-105"
+                >
+                  <span>Open Live Workspace</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => onOpenAuth('signin')}
+                    className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/40 flex items-center justify-center gap-2 transition-all hover:scale-105"
+                  >
+                    <Lock className="w-4 h-4 text-cyan-200" />
+                    <span>Sign In to Access Dashboard</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => onOpenAuth('signup')}
+                    className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-bold text-sm transition-all"
+                  >
+                    Create Free Account
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -810,7 +871,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* 9. FOOTER */}
       <footer className="border-t border-slate-800/80 bg-slate-950 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="cursor-pointer" onClick={onEnterApp}>
+          <div className="cursor-pointer" onClick={handleAccessDashboard}>
             <AppLogo size="sm" showBadge={false} />
           </div>
 
@@ -819,8 +880,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </p>
 
           <div className="flex items-center gap-4 text-xs text-slate-400">
-            <button onClick={onEnterApp} className="hover:text-white transition-colors">Workspace</button>
-            <button onClick={() => onOpenAuth('signin')} className="hover:text-white transition-colors">Sign In</button>
+            <button onClick={handleAccessDashboard} className="hover:text-white transition-colors">
+              {user ? 'Workspace' : 'Dashboard (Sign In Required)'}
+            </button>
+            {user ? (
+              <button onClick={onLogout} className="text-rose-400 hover:text-rose-300 transition-colors">Sign Out</button>
+            ) : (
+              <button onClick={() => onOpenAuth('signin')} className="hover:text-white transition-colors">Sign In</button>
+            )}
             <a href="#privacy" onClick={(e) => { e.preventDefault(); alert('DataHub is a zero-egress client-side analytics platform. No data is stored externally.'); }} className="hover:text-white transition-colors">Security & Privacy</a>
           </div>
         </div>

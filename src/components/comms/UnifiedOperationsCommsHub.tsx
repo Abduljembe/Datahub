@@ -1130,6 +1130,10 @@ export const UnifiedOperationsCommsHub: React.FC<UnifiedOperationsCommsHubProps>
         <DesktopExeModal
           isOpen={isDesktopModalOpen}
           onClose={() => setIsDesktopModalOpen(false)}
+          onNavigateTab={(tab) => {
+            setIsDesktopModalOpen(false);
+            if (onNavigateToTab) onNavigateToTab(tab);
+          }}
         />
       </>
     );
@@ -1145,6 +1149,10 @@ export const UnifiedOperationsCommsHub: React.FC<UnifiedOperationsCommsHubProps>
       <DesktopExeModal
         isOpen={isDesktopModalOpen}
         onClose={() => setIsDesktopModalOpen(false)}
+        onNavigateTab={(tab) => {
+          setIsDesktopModalOpen(false);
+          if (onNavigateToTab) onNavigateToTab(tab);
+        }}
       />
     </>
   );

@@ -3,6 +3,7 @@ export type DataType = ColumnDataType;
 export type AggregationType = 'sum' | 'mean' | 'count' | 'min' | 'max';
 
 export type AppTab = 
+  | 'dashboard'
   | 'upload' 
   | 'collection' 
   | 'analysis' 

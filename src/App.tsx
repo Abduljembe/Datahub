@@ -45,6 +45,9 @@ import { ExecutiveSlideDeckModal } from './components/analysis/ExecutiveSlideDec
 import { PublicSurveyShareModal } from './components/collection/PublicSurveyShareModal';
 import { UnifiedOperationsCommsHub } from './components/comms/UnifiedOperationsCommsHub';
 import { DesktopExeModal } from './components/desktop/DesktopExeModal';
+import { UnifiedDashboard } from './components/dashboard/UnifiedDashboard';
+import { MobileDashboardOverview } from './components/mobile/MobileDashboardOverview';
+import { MobileAllToolsSheet } from './components/mobile/MobileAllToolsSheet';
 import { Presentation, QrCode } from 'lucide-react';
 
 export default function App() {
@@ -69,7 +72,7 @@ export default function App() {
     } catch {}
     return DEFAULT_QUALITATIVE_DATASET.id;
   });
-  const [activeTab, setActiveTab] = useState<AppTab>('upload');
+  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
   const [isDatasetModalOpen, setIsDatasetModalOpen] = useState<boolean>(false);
   const [datasetModalInitialTab, setDatasetModalInitialTab] = useState<'list' | 'versions' | 'create'>('list');
   const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
@@ -80,6 +83,7 @@ export default function App() {
   const [isQrSurveyOpen, setIsQrSurveyOpen] = useState<boolean>(false);
   const [isCommsHubOpen, setIsCommsHubOpen] = useState<boolean>(false);
   const [isDesktopExeOpen, setIsDesktopExeOpen] = useState<boolean>(false);
+  const [isMobileAllToolsOpen, setIsMobileAllToolsOpen] = useState<boolean>(false);
   
   // Top-level Navigation & View Mode ('landing' | 'app')
   const [viewMode, setViewMode] = useState<'landing' | 'app'>('landing');
@@ -144,6 +148,9 @@ export default function App() {
   // Desktop keyboard shortcuts & native Electron app bridge
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Must be authenticated to use workspace keyboard shortcuts
+      if (!user) return;
+
       // Don't trigger if user is typing in an input / textarea
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
@@ -246,6 +253,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
+    setViewMode('landing');
     try {
       localStorage.removeItem('datahub_auth_user');
     } catch (e) {
@@ -258,16 +266,22 @@ export default function App() {
       isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'
     }`}>
       
-      {/* LANDING PAGE VIEW */}
-      {viewMode === 'landing' ? (
+      {/* LANDING PAGE / AUTH WALL VIEW - Gated so dashboard is inaccessible unless signed in */}
+      {viewMode === 'landing' || !user ? (
         <LandingPage
-          onEnterApp={() => setViewMode('app')}
+          onEnterApp={() => {
+            if (user) {
+              setViewMode('app');
+            } else {
+              handleOpenAuth('signin');
+            }
+          }}
           onOpenAuth={handleOpenAuth}
           user={user}
           onLogout={handleLogout}
         />
       ) : (
-        /* APP WORKSPACE VIEW */
+        /* APP WORKSPACE DASHBOARD VIEW (AUTHENTICATED ACCESS ONLY) */
         <>
           {/* Global Top Navbar */}
           <Navbar
@@ -282,6 +296,7 @@ export default function App() {
             onOpenShareModal={() => handleOpenShare(activeDataset)}
             onOpenCommsHub={() => setIsCommsHubOpen(true)}
             onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
+            onOpenAllTools={() => setIsMobileAllToolsOpen(true)}
             user={user}
             onOpenAuth={handleOpenAuth}
             onLogout={handleLogout}
@@ -501,7 +516,33 @@ export default function App() {
           {/* Main App Body */}
           <main className="flex-1 max-w-7xl w-full mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:p-8 pb-24 sm:pb-28 md:pb-8">
             
-            {/* TAB 1: UPLOAD, CLEAN & ANALYZE CUSTOM DATA */}
+            {/* TAB 0: ALL-IN-ONE UNIFIED DASHBOARD (ALL FEATURES AT ONE PLACE) */}
+            {activeTab === 'dashboard' && (
+              <UnifiedDashboard
+                dataset={activeDataset}
+                datasets={datasets}
+                onSelectDataset={handleSelectDataset}
+                onCreateDataset={handleCreateDataset}
+                onUpdateDataset={handleUpdateDataset}
+                onDeleteDataset={handleDeleteDataset}
+                onAppendRowsToActive={handleAddRowsToDataset}
+                onNavigateTab={(tab) => setActiveTab(tab)}
+                onOpenDatasetModal={(tab) => {
+                  setDatasetModalInitialTab(tab || 'list');
+                  setIsDatasetModalOpen(true);
+                }}
+                onOpenShareModal={() => handleOpenShare(activeDataset)}
+                onOpenCopilot={() => setIsCopilotOpen(true)}
+                onOpenSlideDeck={() => setIsSlideDeckOpen(true)}
+                onOpenQrSurvey={() => setIsQrSurveyOpen(true)}
+                onOpenTour={() => setIsTourOpen(true)}
+                onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
+                onOpenCommsHub={() => setIsCommsHubOpen(true)}
+                currentUser={user}
+              />
+            )}
+
+            {/* TAB 1: UPLOAD & DATA CLEANING STUDIO */}
             {activeTab === 'upload' && (
               <UploadCleanStudio
                 datasets={datasets}
@@ -711,10 +752,28 @@ export default function App() {
             isDark={isDark}
           />
 
-          {/* Modal: Windows Desktop App & .EXE Studio */}
+          {/* Modal: Windows Desktop App & Computer Studio */}
           <DesktopExeModal
             isOpen={isDesktopExeOpen}
             onClose={() => setIsDesktopExeOpen(false)}
+            onNavigateTab={(tab) => {
+              setIsDesktopExeOpen(false);
+              setActiveTab(tab);
+            }}
+            onOpenCopilot={() => {
+              setIsDesktopExeOpen(false);
+              setIsCopilotOpen(true);
+            }}
+          />
+
+          {/* Mobile Bottom Sheet: All 24 Tools Launcher */}
+          <MobileAllToolsSheet
+            isOpen={isMobileAllToolsOpen}
+            onClose={() => setIsMobileAllToolsOpen(false)}
+            onSelectTab={(tab) => setActiveTab(tab)}
+            onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
+            onOpenCopilot={() => setIsCopilotOpen(true)}
+            onOpenTour={() => setIsTourOpen(true)}
           />
 
           {/* Floating AI Copilot Launcher */}

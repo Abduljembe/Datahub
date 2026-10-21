@@ -88,9 +88,36 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { isDark } = useTheme();
 
   const handleTabChange = (tab: AppTab) => {
+    const sectionMap: Record<string, string> = {
+      'upload': 'section-ingest',
+      'grid': 'section-grid',
+      'analysis': 'section-analytics',
+      'simulation': 'section-forecast',
+      'collection': 'section-surveys',
+      'report': 'section-reports',
+      'team': 'section-reports',
+      'operations': 'section-reports',
+      'supervisor': 'section-reports',
+      'admin': 'section-reports',
+    };
+
+    const targetSection = sectionMap[tab];
+    if (activeTab === 'dashboard' && targetSection) {
+      const el = document.getElementById(targetSection);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.classList.add('ring-2', 'ring-indigo-500');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-500'), 2000);
+        setMobileMenuOpen(false);
+        setWorkspaceDropdownOpen(false);
+        return;
+      }
+    }
+
     if (setActiveTab) setActiveTab(tab);
     else if (onChangeTab) onChangeTab(tab);
     setMobileMenuOpen(false);
+    setWorkspaceDropdownOpen(false);
   };
 
   const handleOpenNewDataset = () => {

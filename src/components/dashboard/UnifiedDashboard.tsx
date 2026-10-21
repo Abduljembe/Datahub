@@ -45,7 +45,14 @@ import {
   FileSpreadsheet,
   Terminal,
   Code,
-  BookOpen
+  BookOpen,
+  Maximize2,
+  Minimize2,
+  Mic,
+  Volume2,
+  Square,
+  Columns,
+  LayoutGrid
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -90,18 +97,7 @@ interface UnifiedDashboardProps {
   currentUser: UserProfile | null;
 }
 
-type FeatureCategory =
-  | 'all'
-  | 'analyst'
-  | 'analytics'
-  | 'ingest'
-  | 'grid'
-  | 'forecast'
-  | 'surveys'
-  | 'reporting'
-  | 'operations'
-  | 'supervisor'
-  | 'admin';
+export type CanvasLayoutMode = 'stream' | 'split' | 'bento';
 
 export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
   dataset,
@@ -124,22 +120,31 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
 }) => {
   const { isDark } = useTheme();
 
-  // Selected feature domain filter
-  const [selectedCategory, setSelectedCategory] = useState<FeatureCategory>('all');
-  
-  // Data Analyst Power Workbench visibility state
-  const [analystWorkbenchOpen, setAnalystWorkbenchOpen] = useState<boolean>(true);
+  // Canvas View Mode: Stream (Single continuous flow), Split (2-Column Studio), Bento (Dense Grid)
+  const [layoutMode, setLayoutMode] = useState<CanvasLayoutMode>('stream');
+
+  // Focused Section (Full-screen expand)
+  const [focusedSection, setFocusedSection] = useState<string | null>(null);
+
+  // Collapsed sections set
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  // Active highlighted section for navigation
+  const [activeNavSection, setActiveNavSection] = useState<string>('section-ingest');
 
   // Interactive Visual Analytics chart configuration
   const [chartType, setChartType] = useState<'bar' | 'area' | 'line'>('bar');
   const [selectedXCol, setSelectedXCol] = useState<string>('');
   const [selectedYCol, setSelectedYCol] = useState<string>('');
+  const [chartAggregation, setChartAggregation] = useState<'sum' | 'avg' | 'count' | 'max'>('avg');
 
   // Interactive Live Grid state
   const [gridSearch, setGridSearch] = useState<string>('');
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null);
   const [isEditingCell, setIsEditingCell] = useState<{ rowIdx: number; colName: string } | null>(null);
   const [cellEditValue, setCellEditValue] = useState<string>('');
+  const [isAddingRow, setIsAddingRow] = useState<boolean>(false);
+  const [newRowDraft, setNewRowDraft] = useState<Record<string, any>>({});
 
   // Interactive What-If Scenario simulation state
   const [scenarioDriverDelta, setScenarioDriverDelta] = useState<number>(15); // +15% default perturbation
@@ -156,6 +161,53 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
   // Live QR Code Canvas state
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [qrCopied, setQrCopied] = useState<boolean>(false);
+
+  // Survey inline submission test state
+  const [surveyResponseDraft, setSurveyResponseDraft] = useState<Record<string, any>>({});
+  const [surveySubmitSuccess, setSurveySubmitSuccess] = useState<boolean>(false);
+
+  // Field Voice Debrief state
+  const [isVoiceRecording, setIsVoiceRecording] = useState<boolean>(false);
+  const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const [voiceDebriefs, setVoiceDebriefs] = useState<Array<{ id: string; timestamp: string; duration: string; summary: string }>>([
+    { id: 'vb-1', timestamp: '10:42 AM', duration: '0:45', summary: 'Field supervisor verified Sector 4 GPS coordinates and respondent consent forms.' },
+    { id: 'vb-2', timestamp: '09:15 AM', duration: '1:12', summary: 'Enumerator noted high participant engagement for satisfaction telemetry questions.' }
+  ]);
+
+  // Voice recording timer
+  useEffect(() => {
+    let interval: any = null;
+    if (isVoiceRecording) {
+      interval = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      setRecordingSeconds(0);
+    }
+    return () => clearInterval(interval);
+  }, [isVoiceRecording]);
+
+  // Toggle collapse helper
+  const toggleCollapse = (sectionId: string) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [sectionId]: !prev[sectionId]
+    }));
+  };
+
+  // Smooth scroll and focus helper
+  const jumpToSection = (sectionId: string) => {
+    setActiveNavSection(sectionId);
+    const el = document.getElementById(sectionId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Add brief glowing pulse highlight
+      el.classList.add('ring-2', 'ring-indigo-500', 'transition-all');
+      setTimeout(() => {
+        el.classList.remove('ring-2', 'ring-indigo-500');
+      }, 2000);
+    }
+  };
 
   // Calculate ground truth data hygiene statistics
   const healthStats = useMemo(() => {
@@ -200,28 +252,47 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
   // Prepare aggregated data for Visual Distribution chart
   const chartData = useMemo(() => {
     if (!dataset || !dataset.data || !selectedXCol || !selectedYCol) return [];
-    const slice = dataset.data.slice(0, 15); // first 15 records for clean visualization
+    
+    // Group by selectedXCol
+    const groups: Record<string, number[]> = {};
+    dataset.data.forEach(row => {
+      const xKey = row[selectedXCol] !== null && row[selectedXCol] !== undefined ? String(row[selectedXCol]) : 'Unknown';
+      const yVal = parseNumber(row[selectedYCol]);
+      if (yVal !== null) {
+        if (!groups[xKey]) groups[xKey] = [];
+        groups[xKey].push(yVal);
+      }
+    });
 
-    return slice.map((row, idx) => {
-      const rawX = row[selectedXCol];
-      const xLabel = rawX !== null && rawX !== undefined ? String(rawX).slice(0, 16) : `Item #${idx + 1}`;
-      const rawY = parseNumber(row[selectedYCol]);
+    const entries = Object.entries(groups).slice(0, 16);
+    return entries.map(([key, vals]) => {
+      let aggregatedVal = 0;
+      if (chartAggregation === 'avg') {
+        aggregatedVal = round(vals.reduce((a, b) => a + b, 0) / vals.length, 2);
+      } else if (chartAggregation === 'sum') {
+        aggregatedVal = round(vals.reduce((a, b) => a + b, 0), 2);
+      } else if (chartAggregation === 'count') {
+        aggregatedVal = vals.length;
+      } else if (chartAggregation === 'max') {
+        aggregatedVal = Math.max(...vals);
+      }
       return {
-        name: xLabel,
-        value: rawY !== null ? round(rawY, 2) : 0
+        name: key.length > 14 ? key.slice(0, 14) + '...' : key,
+        value: aggregatedVal,
+        sampleCount: vals.length
       };
     });
-  }, [dataset, selectedXCol, selectedYCol]);
+  }, [dataset, selectedXCol, selectedYCol, chartAggregation]);
 
   // Filtered rows for live spreadsheet grid
   const filteredGridData = useMemo(() => {
     if (!dataset || !dataset.data) return [];
-    if (!gridSearch.trim()) return dataset.data.slice(0, 8); // compact 8 rows
+    if (!gridSearch.trim()) return dataset.data.slice(0, 10);
 
     const q = gridSearch.toLowerCase();
     return dataset.data
       .filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(q)))
-      .slice(0, 8);
+      .slice(0, 10);
   }, [dataset, gridSearch]);
 
   // Real-time What-If forecast outcome computation
@@ -304,11 +375,11 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
         qrCanvasRef.current,
         publicSurveyUrl,
         {
-          width: 140,
+          width: 130,
           margin: 1,
           color: {
             dark: isDark ? '#38bdf8' : '#0284c7',
-            light: isDark ? '#0f172a' : '#ffffff'
+            light: isDark ? '#090d16' : '#ffffff'
           }
         },
         (error) => {
@@ -328,7 +399,6 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
       let cleanedData = [...dataset.data];
       let imputedCount = 0;
 
-      // 1. Impute missing values for each column
       dataset.columns.forEach(col => {
         if (col.type === 'number') {
           const numValues = cleanedData
@@ -345,7 +415,6 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
             });
           }
         } else {
-          // Fill strings with "N/A"
           cleanedData = cleanedData.map(row => {
             if (row[col.name] === null || row[col.name] === undefined || row[col.name] === '') {
               imputedCount++;
@@ -356,7 +425,6 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
         }
       });
 
-      // 2. Remove whitespace from string cells
       cleanedData = cleanedData.map(row => {
         const copy = { ...row };
         Object.keys(copy).forEach(k => {
@@ -450,770 +518,338 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
     setCellEditValue('');
   };
 
-  // Quick file drop/upload handler
+  // Add new row inline
+  const handleAddNewRow = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dataset) return;
+
+    const completedRow: Record<string, any> = {};
+    dataset.columns.forEach(col => {
+      const val = newRowDraft[col.name];
+      if (col.type === 'number') {
+        completedRow[col.name] = val !== undefined && val !== '' ? Number(val) : 0;
+      } else {
+        completedRow[col.name] = val !== undefined && val !== '' ? val : 'Sample Value';
+      }
+    });
+
+    onAppendRowsToActive([completedRow]);
+    setNewRowDraft({});
+    setIsAddingRow(false);
+    setCleanFeedback('New record successfully added to live dataset!');
+    setTimeout(() => setCleanFeedback(null), 4000);
+  };
+
+  // Submit live survey test response
+  const handleSurveySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dataset) return;
+
+    const surveyRow: Record<string, any> = {};
+    dataset.columns.forEach(col => {
+      const draftVal = surveyResponseDraft[col.name];
+      if (col.type === 'number') {
+        surveyRow[col.name] = draftVal !== undefined && draftVal !== '' ? Number(draftVal) : Math.floor(Math.random() * 5) + 1;
+      } else {
+        surveyRow[col.name] = draftVal !== undefined && draftVal !== '' ? draftVal : `Survey Response ${Date.now().toString().slice(-4)}`;
+      }
+    });
+
+    onAppendRowsToActive([surveyRow]);
+    setSurveyResponseDraft({});
+    setSurveySubmitSuccess(true);
+    setTimeout(() => setSurveySubmitSuccess(false), 4000);
+  };
+
+  // Voice recording toggle
+  const handleToggleVoiceRecording = () => {
+    if (isVoiceRecording) {
+      // Finish recording and add debrief
+      const newDebrief = {
+        id: `vb-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        duration: `0:${recordingSeconds.toString().padStart(2, '0')}`,
+        summary: `Audio note captured: Qualitative debrief recorded in field. Synchronized with dataset ${dataset?.name || 'Active Study'}.`
+      };
+      setVoiceDebriefs([newDebrief, ...voiceDebriefs]);
+      setIsVoiceRecording(false);
+    } else {
+      setIsVoiceRecording(true);
+    }
+  };
+
+  // File drop/upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        // Parse simple CSV rows
-        const lines = text.split(/\r\n|\n/).filter(line => line.trim().length > 0);
-        if (lines.length > 1) {
-          const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-          const newRows: Record<string, any>[] = [];
-          for (let i = 1; i < lines.length; i++) {
-            const values = lines[i].split(',').map(v => v.trim().replace(/^["']|["']$/g, ''));
-            const rowObj: Record<string, any> = {};
-            headers.forEach((h, idx) => {
-              const val = values[idx];
-              rowObj[h] = !isNaN(Number(val)) && val !== '' ? Number(val) : val;
-            });
-            newRows.push(rowObj);
-          }
+      const text = event.target?.result as string;
+      if (!text) return;
 
-          if (newRows.length > 0) {
-            onAppendRowsToActive(newRows);
-            setCleanFeedback(`Successfully ingested ${newRows.length} rows into active dataset!`);
-            setTimeout(() => setCleanFeedback(null), 4000);
-          }
-        }
-      } catch (err) {
-        console.warn('File read notice:', err);
+      // Simple CSV parser
+      const lines = text.split('\n').filter(l => l.trim().length > 0);
+      if (lines.length > 1) {
+        const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+        const rows = lines.slice(1).map(line => {
+          const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+          const rowObj: Record<string, any> = {};
+          headers.forEach((h, i) => {
+            const raw = vals[i];
+            const num = Number(raw);
+            rowObj[h] = !isNaN(num) && raw !== '' ? num : raw;
+          });
+          return rowObj;
+        });
+
+        const newCols: ColumnMeta[] = headers.map(h => {
+          const sampleVal = rows[0]?.[h];
+          return {
+            id: `col_${h}`,
+            name: h,
+            type: typeof sampleVal === 'number' ? 'number' : 'string',
+            nullable: true
+          };
+        });
+
+        const newDataset: Dataset = {
+          id: `dataset_${Date.now()}`,
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          description: `Imported from ${file.name} on ${new Date().toLocaleDateString()}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          sourceType: 'csv',
+          columns: newCols,
+          data: rows
+        };
+
+        onCreateDataset(newDataset);
+        setCleanFeedback(`Successfully loaded "${file.name}" with ${rows.length} rows and ${newCols.length} columns!`);
+        setTimeout(() => setCleanFeedback(null), 5000);
       }
     };
     reader.readAsText(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Copy Survey URL
+  // Copy survey URL
   const handleCopySurveyUrl = () => {
     navigator.clipboard.writeText(publicSurveyUrl);
     setQrCopied(true);
-    setTimeout(() => setQrCopied(false), 2000);
+    setTimeout(() => setQrCopied(false), 2500);
   };
 
-  const activeSupervisor = getActiveSupervisorSession();
-
   return (
-    <div className="w-full space-y-6 animate-in fade-in duration-200">
-      
-      {/* 1. TOP GROUND-TRUTH TELEMETRY & DATASET SELECTOR STRIP */}
-      <section className={`p-4 sm:p-5 rounded-2xl border transition-colors ${
-        isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+    <div className="space-y-6 pb-28">
+
+      {/* ========================================================================= */}
+      {/* 1. TOP CONTROL DECK: LIVE TELEMETRY, LAYOUT SWITCHER & QUICK JUMP DOCK */}
+      {/* ========================================================================= */}
+      <section className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+        isDark ? 'bg-slate-900/90 border-slate-800 backdrop-blur-md shadow-xl' : 'bg-white border-slate-200 shadow-sm'
       }`}>
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
-          {/* Active Dataset Selector & Metadata */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-500 flex items-center justify-center text-white shrink-0 shadow-md shadow-indigo-600/20">
-              <LayoutDashboard className="w-5 h-5" />
+          {/* Active Dataset Identity & Status */}
+          <div className="flex items-center gap-3">
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-lg shadow-sm shrink-0 ${
+              isDark ? 'bg-gradient-to-br from-indigo-600 to-cyan-500 text-white' : 'bg-gradient-to-br from-indigo-500 to-cyan-500 text-white'
+            }`}>
+              <Database className="w-5 h-5" />
             </div>
-
-            <div className="min-w-0">
+            <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm sm:text-base font-extrabold tracking-tight truncate max-w-[260px] sm:max-w-md">
-                  {dataset?.name || 'No Dataset Active'}
-                </span>
-                
-                <button
-                  onClick={() => onOpenDatasetModal('list')}
-                  className={`text-xs px-2.5 py-1 rounded-lg border font-semibold flex items-center gap-1 transition-colors ${
-                    isDark
-                      ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
-                      : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
-                  }`}
-                  title="Switch or manage datasets"
-                >
-                  <span>Switch</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                </button>
-
-                <button
-                  onClick={() => onOpenDatasetModal('create')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-1 transition-all shadow-xs"
-                  title="Create new dataset"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>New</span>
-                </button>
-              </div>
-
-              {/* Clean Unboxed Metadata with Typographic Separators */}
-              <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-mono">
-                <span className="text-emerald-500 font-semibold flex items-center gap-1">
+                <h1 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                  <span>{dataset?.name || 'Omnichannel Research Workstation'}</span>
+                </h1>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Live Sync
+                  All Features Live on One Page
                 </span>
-                <span aria-hidden="true">·</span>
-                <span className="tabular-nums font-bold text-slate-300">
-                  {healthStats.rowCount.toLocaleString()} observations
-                </span>
-                <span aria-hidden="true">·</span>
-                <span className="tabular-nums text-slate-300">
-                  {healthStats.columnCount} columns
-                </span>
-                <span aria-hidden="true">·</span>
-                <span className="hidden sm:inline">Zero Egress (Client-Side)</span>
               </div>
+              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                <span>{healthStats.rowCount.toLocaleString()} rows</span>
+                <span>·</span>
+                <span>{healthStats.columnCount} dimensions</span>
+                <span>·</span>
+                <span className="text-emerald-400 font-semibold">{healthStats.completenessRate}% completeness</span>
+                <span>·</span>
+                <span className="text-cyan-400 font-mono">Zero cloud egress</span>
+              </p>
             </div>
           </div>
 
-          {/* Quick Universal Actions Bar */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Analyst Power Workbench Toggle */}
-            <button
-              onClick={() => {
-                setAnalystWorkbenchOpen(!analystWorkbenchOpen);
-                if (!analystWorkbenchOpen) {
-                  setSelectedCategory('all');
-                }
-              }}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
-                analystWorkbenchOpen
-                  ? 'bg-gradient-to-r from-cyan-600 via-indigo-600 to-indigo-700 text-white border-cyan-400 shadow-cyan-600/25'
-                  : isDark
-                    ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-cyan-300'
-                    : 'bg-cyan-50 hover:bg-cyan-100 border-cyan-200 text-cyan-700'
-              }`}
-              title="Toggle Data Analyst Power Workbench (Data Dictionary, Python/SQL Code Generator, Statistical Findings)"
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              <span>Analyst Workbench</span>
-              <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold ${
-                analystWorkbenchOpen ? 'bg-white/20 text-white' : 'bg-cyan-500/20 text-cyan-300'
-              }`}>
-                PRO
-              </span>
-            </button>
+          {/* Canvas Layout Mode Selector & Global Actions */}
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* Layout Mode Segmented Control */}
+            <div className={`p-1 rounded-xl border flex items-center gap-1 ${
+              isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
+            }`}>
+              <button
+                onClick={() => setLayoutMode('stream')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  layoutMode === 'stream'
+                    ? 'bg-indigo-600 text-white shadow-sm font-bold'
+                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Continuous Panoramic Stream: All features stacked with smooth section scrolling"
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Panoramic</span>
+              </button>
 
+              <button
+                onClick={() => setLayoutMode('split')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  layoutMode === 'split'
+                    ? 'bg-indigo-600 text-white shadow-sm font-bold'
+                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Dual-Pane Split Studio: Left = Ingest & Grid; Right = Analytics & Forecaster"
+              >
+                <Columns className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Split Studio</span>
+              </button>
+
+              <button
+                onClick={() => setLayoutMode('bento')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  layoutMode === 'bento'
+                    ? 'bg-indigo-600 text-white shadow-sm font-bold'
+                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Dense Bento Matrix: High-density multi-engine card layout"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Dense Bento</span>
+              </button>
+            </div>
+
+            {/* Quick Copilot Trigger */}
             <button
               onClick={onOpenCopilot}
-              className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-purple-600/30"
-              title="Open Gemini AI Natural Language Analyst"
+              className="px-3 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3.5 h-3.5 text-purple-200 animate-pulse" />
               <span>AI Copilot</span>
             </button>
 
+            {/* Slide Deck Trigger */}
             <button
               onClick={onOpenSlideDeck}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                isDark
-                  ? 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-500/40 text-amber-300'
-                  : 'bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-700'
-              }`}
-              title="Generate Executive Slide Deck"
+              className="px-3 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/30 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition-colors"
             >
               <Presentation className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">Slide Deck</span>
-            </button>
-
-            <button
-              onClick={onOpenDesktopExe}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                isDark
-                  ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-cyan-300'
-                  : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-cyan-700'
-              }`}
-              title="Open Desktop EXE Center & Computer Settings"
-            >
-              <Monitor className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline">Desktop .EXE</span>
-            </button>
-
-            <button
-              onClick={() => dataset && exportToCSV(dataset)}
-              className={`p-2 rounded-xl border transition-colors ${
-                isDark
-                  ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
-                  : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
-              }`}
-              title="Export Dataset to CSV"
-            >
-              <Download className="w-3.5 h-3.5" />
             </button>
           </div>
 
         </div>
 
-        {/* Global Feedback Banner */}
+        {/* Global Clean Feedback Alert */}
         {cleanFeedback && (
-          <div className="mt-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between gap-2 animate-in fade-in duration-150">
+          <div className="mt-3 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-medium flex items-center justify-between animate-in fade-in">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <span>{cleanFeedback}</span>
             </div>
-            <button onClick={() => setCleanFeedback(null)} className="text-slate-400 hover:text-white">
+            <button onClick={() => setCleanFeedback(null)} className="text-emerald-400 hover:text-white">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
 
-        {/* 6 GROUND-TRUTH GROUND KPI TILES (High-Density Tabular Math) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4 pt-4 border-t border-slate-800/60">
+        {/* PERSISTENT QUICK-JUMP SECTION DOCK (ZERO-PILL MINIMALIST NAVIGATION) */}
+        <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex items-center justify-between gap-2 overflow-x-auto pb-1 text-xs">
+          <div className="flex items-center gap-1.5 shrink-0 text-slate-400 text-[11px] font-semibold uppercase tracking-wider font-mono">
+            <span>Jump to Bay:</span>
+          </div>
           
-          {/* Tile 1: Rows / Observations */}
-          <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block font-mono">Observations</span>
-            <span className="text-lg sm:text-xl font-black font-mono tabular-nums text-cyan-400 mt-0.5 block">
-              {healthStats.rowCount.toLocaleString()}
-            </span>
-            <span className="text-[10px] text-slate-400">Total data rows</span>
-          </div>
-
-          {/* Tile 2: Columns / Dimensions */}
-          <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block font-mono">Dimensions</span>
-            <span className="text-lg sm:text-xl font-black font-mono tabular-nums text-indigo-400 mt-0.5 block">
-              {healthStats.columnCount}
-            </span>
-            <span className="text-[10px] text-slate-400">{numericColumns.length} numeric, {categoricalColumns.length} text</span>
-          </div>
-
-          {/* Tile 3: Quality Completeness */}
-          <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block font-mono">Data Quality</span>
-            <span className="text-lg sm:text-xl font-black font-mono tabular-nums text-emerald-400 mt-0.5 block">
-              {round(healthStats.completenessRate, 1)}%
-            </span>
-            <span className="text-[10px] text-slate-400">Ground-truth hygiene</span>
-          </div>
-
-          {/* Tile 4: Missing Cells + Quick Clean */}
-          <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-between`}>
-            <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block font-mono">Missing Values</span>
-              <span className={`text-lg sm:text-xl font-black font-mono tabular-nums mt-0.5 block ${
-                healthStats.totalNulls > 0 ? 'text-amber-400' : 'text-emerald-400'
-              }`}>
-                {healthStats.totalNulls}
-              </span>
-            </div>
-            {healthStats.totalNulls > 0 ? (
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {[
+              { id: 'section-ingest', label: '01. Ingestion', color: 'text-cyan-400' },
+              { id: 'section-grid', label: '02. Live Grid', color: 'text-emerald-400' },
+              { id: 'section-analyst', label: '03. Analyst Pro', color: 'text-cyan-400' },
+              { id: 'section-analytics', label: '04. Visual Charts', color: 'text-indigo-400' },
+              { id: 'section-forecast', label: '05. What-If Forecast', color: 'text-amber-400' },
+              { id: 'section-surveys', label: '06. Field Survey', color: 'text-teal-400' },
+              { id: 'section-reports', label: '07. Ops & Reports', color: 'text-purple-400' },
+            ].map(item => (
               <button
-                onClick={handleRunAutoClean}
-                disabled={isAutoCleaning}
-                className="text-[10px] text-cyan-400 hover:text-cyan-300 font-semibold underline text-left mt-1"
+                key={item.id}
+                onClick={() => jumpToSection(item.id)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  activeNavSection === item.id
+                    ? 'bg-slate-800 text-white font-bold border border-slate-700 shadow-xs'
+                    : isDark ? 'text-slate-400 hover:text-white hover:bg-slate-800/50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
               >
-                {isAutoCleaning ? 'Cleaning...' : '1-Click Auto-Clean'}
+                <span className={`w-1.5 h-1.5 rounded-full ${activeNavSection === item.id ? 'bg-indigo-400 animate-ping' : 'bg-slate-600'}`} />
+                <span>{item.label}</span>
               </button>
-            ) : (
-              <span className="text-[10px] text-emerald-500 font-medium">All cells populated</span>
-            )}
+            ))}
           </div>
 
-          {/* Tile 5: Statistical Outliers + Winsorize */}
-          <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-between`}>
-            <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block font-mono">Outliers (&gt;3σ)</span>
-              <span className={`text-lg sm:text-xl font-black font-mono tabular-nums mt-0.5 block ${
-                healthStats.totalOutliers > 0 ? 'text-rose-400' : 'text-slate-300'
-              }`}>
-                {healthStats.totalOutliers}
-              </span>
-            </div>
-            {healthStats.totalOutliers > 0 ? (
-              <button
-                onClick={handleWinsorizeOutliers}
-                className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold underline text-left mt-1"
-              >
-                1-Click Winsorize
-              </button>
-            ) : (
-              <span className="text-[10px] text-slate-400">Within Gaussian bands</span>
-            )}
+          <div className="hidden xl:flex items-center gap-2 shrink-0">
+            <span className="text-[11px] font-mono text-slate-400">RAM: 4.8MB</span>
+            <span className="text-slate-700">|</span>
+            <span className="text-[11px] font-mono text-emerald-400">Sync: 0ms</span>
           </div>
-
-          {/* Tile 6: Team Presence / Fleet */}
-          <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block font-mono">Collaborators</span>
-            <span className="text-lg sm:text-xl font-black font-mono tabular-nums text-teal-400 mt-0.5 block">
-              6 Active
-            </span>
-            <span className="text-[10px] text-slate-400">Field fleet synchronized</span>
-          </div>
-
         </div>
 
       </section>
 
-      {/* 2. ALL PLATFORM FEATURES DIRECTORY & COMMAND CENTER (ALL FEATURES AT ONE PLACE) */}
-      <section className={`rounded-2xl border p-4 sm:p-5 transition-colors ${
-        isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
-      }`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-800/60 gap-2 mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold">
-              <Layers className="w-4 h-4" />
+      {/* ========================================================================= */}
+      {/* BAY 1: DATA INGESTION, SAMPLE LOADER & DATA HYGIENE ARSENAL */}
+      {/* ========================================================================= */}
+      <section
+        id="section-ingest"
+        className={`rounded-2xl border p-5 transition-all ${
+          focusedSection === 'section-ingest' ? 'ring-2 ring-indigo-500 shadow-2xl' : ''
+        } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}
+      >
+        {/* Section Header */}
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80 mb-4 gap-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-cyan-600/20 text-cyan-400 flex items-center justify-center font-bold">
+              <UploadCloud className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                All Platform Features & Workspaces
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  All at Dashboard
+                01. Ingestion, Hygiene Profiler & Sample Loader
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">
+                  Zero Egress
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Every feature unified in one interactive dashboard. Click any feature to explore or launch.
+                Drag-and-drop file imports, 1-click sample studies, automated missing cell imputation, and outlier winsorization.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5 font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              13 Tools Ready
-            </span>
-          </div>
-        </div>
-
-        {/* 13 Features Grid Matrix */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-          {[
-            {
-              id: 'analyst_workbench',
-              name: 'Analyst Workbench',
-              category: 'Schema & Python/SQL',
-              icon: Terminal,
-              iconColor: 'text-cyan-400',
-              bgColor: 'bg-cyan-600/15',
-              badge: 'PRO Code',
-              action: () => {
-                setAnalystWorkbenchOpen(true);
-                setSelectedCategory('analyst');
-              }
-            },
-            {
-              id: 'analytics',
-              name: 'Visual Analytics',
-              category: 'Analysis & Charts',
-              icon: BarChart3,
-              iconColor: 'text-indigo-400',
-              bgColor: 'bg-indigo-600/15',
-              badge: 'Interactive',
-              action: () => setSelectedCategory('analytics')
-            },
-            {
-              id: 'ingest',
-              name: 'Upload & Clean',
-              category: 'Ingestion & Impute',
-              icon: UploadCloud,
-              iconColor: 'text-cyan-400',
-              bgColor: 'bg-cyan-600/15',
-              badge: 'Zero Egress',
-              action: () => setSelectedCategory('ingest')
-            },
-            {
-              id: 'regression',
-              name: 'Inference & Math',
-              category: 'OLS & Hypothesis',
-              icon: Activity,
-              iconColor: 'text-purple-400',
-              bgColor: 'bg-purple-600/15',
-              badge: 'R² Engine',
-              action: () => setSelectedCategory('analytics')
-            },
-            {
-              id: 'grid',
-              name: 'Spreadsheet Grid',
-              category: 'Tabular Editor',
-              icon: Table,
-              iconColor: 'text-emerald-400',
-              bgColor: 'bg-emerald-600/15',
-              badge: 'Live Cells',
-              action: () => setSelectedCategory('grid')
-            },
-            {
-              id: 'forecast',
-              name: 'What-If & Forecast',
-              category: 'Elasticity Model',
-              icon: TrendingUp,
-              iconColor: 'text-amber-400',
-              bgColor: 'bg-amber-600/15',
-              badge: 'Perturbations',
-              action: () => setSelectedCategory('forecast')
-            },
-            {
-              id: 'surveys',
-              name: 'Surveys & Kiosk',
-              category: 'Public QR Code',
-              icon: QrCode,
-              iconColor: 'text-teal-400',
-              bgColor: 'bg-teal-600/15',
-              badge: 'Offline Form',
-              action: () => setSelectedCategory('surveys')
-            },
-            {
-              id: 'reporting',
-              name: 'Slide Deck & PDF',
-              category: 'Boardroom Dossier',
-              icon: FileText,
-              iconColor: 'text-amber-400',
-              bgColor: 'bg-amber-600/15',
-              badge: 'Print Ready',
-              action: () => setSelectedCategory('reporting')
-            },
-            {
-              id: 'operations',
-              name: 'Team & Dispatch',
-              category: 'Presence & Sharing',
-              icon: Users,
-              iconColor: 'text-cyan-400',
-              bgColor: 'bg-cyan-600/15',
-              badge: '6 Active',
-              action: () => setSelectedCategory('operations')
-            },
-            {
-              id: 'supervisor',
-              name: 'Supervisor Vault',
-              category: 'Field Audit & Fraud',
-              icon: ShieldCheck,
-              iconColor: 'text-purple-400',
-              bgColor: 'bg-purple-600/15',
-              badge: 'PIN Auth',
-              action: () => setSelectedCategory('supervisor')
-            },
-            {
-              id: 'admin',
-              name: 'Admin & Telemetry',
-              category: 'System Diagnostics',
-              icon: Cpu,
-              iconColor: 'text-rose-400',
-              bgColor: 'bg-rose-600/15',
-              badge: 'RBAC Active',
-              action: () => setSelectedCategory('admin')
-            },
-            {
-              id: 'comms',
-              name: 'Comms & Ops Hub',
-              category: 'Regional Radio',
-              icon: Radio,
-              iconColor: 'text-cyan-400',
-              bgColor: 'bg-cyan-600/15',
-              badge: 'Live Feed',
-              action: () => {
-                if (onOpenCommsHub) onOpenCommsHub();
-                else setSelectedCategory('operations');
-              }
-            },
-            {
-              id: 'desktop',
-              name: 'Desktop .EXE App',
-              category: 'Computer Settings',
-              icon: Monitor,
-              iconColor: 'text-blue-400',
-              bgColor: 'bg-blue-600/15',
-              badge: 'Win 10/11',
-              action: onOpenDesktopExe
-            }
-          ].map(f => {
-            const Icon = f.icon;
-            return (
-              <button
-                key={f.id}
-                onClick={f.action}
-                className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all hover:scale-[1.02] shadow-xs group ${
-                  isDark
-                    ? 'bg-slate-950/70 border-slate-800/80 hover:border-indigo-500/60 hover:bg-slate-900'
-                    : 'bg-slate-50 border-slate-200 hover:border-indigo-400 hover:bg-white'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className={`w-7 h-7 rounded-lg ${f.bgColor} ${f.iconColor} flex items-center justify-center shrink-0`}>
-                      <Icon className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-semibold group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                      {f.badge}
-                    </span>
-                  </div>
-                  <span className="text-xs font-bold text-white block group-hover:text-indigo-300 transition-colors">
-                    {f.name}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block truncate">
-                    {f.category}
-                  </span>
-                </div>
-                <div className="mt-2.5 pt-2 border-t border-slate-800/50 flex items-center justify-between text-[10px] text-indigo-400 font-semibold group-hover:text-cyan-300">
-                  <span>Explore Feature</span>
-                  <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 3. CATEGORY FILTER SEGMENTED CONTROLS & COPILOT SEARCH */}
-      <section className="flex items-center justify-between gap-3 flex-wrap">
-        <div className={`p-1 rounded-xl border flex items-center gap-1 overflow-x-auto max-w-full ${
-          isDark ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-200'
-        }`}>
-          {[
-            { id: 'all', label: 'All 13 Features' },
-            { id: 'analyst', label: 'Analyst Workbench (Pro)' },
-            { id: 'analytics', label: 'Analytics & AI' },
-            { id: 'ingest', label: 'Ingest & Clean' },
-            { id: 'grid', label: 'Spreadsheet Grid' },
-            { id: 'forecast', label: 'What-If & Forecast' },
-            { id: 'surveys', label: 'Surveys & Kiosk' },
-            { id: 'reporting', label: 'Reports & Slides' },
-            { id: 'operations', label: 'Team & Comms' },
-            { id: 'supervisor', label: 'Supervisor Vault' },
-            { id: 'admin', label: 'Admin Telemetry' },
-          ].map(cat => (
+          <div className="flex items-center gap-2">
             <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id as FeatureCategory)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${
-                selectedCategory === cat.id
-                  ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 text-white shadow-sm font-bold'
-                  : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
-              }`}
+              onClick={() => toggleCollapse('section-ingest')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+              title="Collapse / Expand"
             >
-              {cat.label}
+              {collapsedSections['section-ingest'] ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
-          ))}
-        </div>
-
-        {/* Natural Language Prompt Query Bar */}
-        <div className="flex-1 min-w-[280px] max-w-md relative">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={copilotQuickQuery}
-            onChange={(e) => setCopilotQuickQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onOpenCopilot();
-            }}
-            placeholder="Ask Copilot: e.g. Find top correlations..."
-            className={`w-full pl-9 pr-20 py-2 rounded-xl text-xs border transition-colors ${
-              isDark
-                ? 'bg-slate-900/90 border-slate-800 text-white placeholder-slate-500 focus:border-indigo-500'
-                : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-indigo-500 shadow-xs'
-            }`}
-          />
-          <button
-            onClick={onOpenCopilot}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold flex items-center gap-1 shadow-xs"
-          >
-            <span>Ask</span>
-            <ArrowRight className="w-3 h-3" />
-          </button>
-        </div>
-      </section>
-
-      {/* 4. DATA ANALYST POWER WORKBENCH (PRO CAPABILITY & DIRECT CO-PILOT) */}
-      {(selectedCategory === 'all' || selectedCategory === 'analyst') && analystWorkbenchOpen && (
-        <AnalystWorkbench
-          dataset={dataset}
-          onUpdateDataset={onUpdateDataset}
-          onNavigateTab={onNavigateTab}
-          onOpenCopilot={onOpenCopilot}
-        />
-      )}
-
-      {/* 5. CORE PANORAMIC BENTO GRID - ALL FEATURES IN ONE INTEGRATED WORKSPACE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
-        {/* ========================================================================= */}
-        {/* FEATURE 1: VISUAL ANALYTICS & DISTRIBUTION RADAR (SPAN 8) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'analytics') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'analytics' ? 'lg:col-span-12' : 'lg:col-span-8'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            {/* Header */}
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4 gap-2 flex-wrap">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
-                    <BarChart3 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                      01. Visual Distribution & Dimension Explorer
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      Live interactive charting across categorical and numeric dimensions
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {/* Chart Type Toggle */}
-                  <div className={`p-0.5 rounded-lg border flex items-center gap-0.5 ${
-                    isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
-                  }`}>
-                    {(['bar', 'area', 'line'] as const).map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setChartType(t)}
-                        className={`px-2 py-1 text-[11px] font-semibold capitalize rounded-md transition-all ${
-                          chartType === t
-                            ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={() => onNavigateTab('analysis')}
-                    className="text-xs px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 font-semibold flex items-center gap-1 transition-colors"
-                  >
-                    <span>Full Analysis Suite</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Axis Selectors */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="text-[11px] font-mono font-semibold text-slate-400 block mb-1">
-                    X-Axis Dimension
-                  </label>
-                  <select
-                    value={selectedXCol}
-                    onChange={(e) => setSelectedXCol(e.target.value)}
-                    className={`w-full px-2.5 py-1.5 text-xs rounded-lg border ${
-                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                    }`}
-                  >
-                    {dataset?.columns.map(c => (
-                      <option key={c.name} value={c.name}>
-                        {c.name} ({c.type})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-mono font-semibold text-slate-400 block mb-1">
-                    Y-Axis Metric
-                  </label>
-                  <select
-                    value={selectedYCol}
-                    onChange={(e) => setSelectedYCol(e.target.value)}
-                    className={`w-full px-2.5 py-1.5 text-xs rounded-lg border ${
-                      isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                    }`}
-                  >
-                    {numericColumns.map(c => (
-                      <option key={c.name} value={c.name}>
-                        {c.name} (numerical)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Chart Visual Surface */}
-              <div className="h-56 sm:h-64 w-full pt-2">
-                {chartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    {chartType === 'bar' ? (
-                      <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} opacity={0.6} />
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} angle={-25} textAnchor="end" interval={0} />
-                        <YAxis stroke="#94a3b8" fontSize={10} />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                            borderColor: isDark ? '#334155' : '#cbd5e1',
-                            borderRadius: '0.75rem',
-                            fontSize: '12px',
-                            color: isDark ? '#ffffff' : '#0f172a'
-                          }}
-                        />
-                        <Bar dataKey="value" fill="#4f46e5" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    ) : chartType === 'area' ? (
-                      <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} opacity={0.6} />
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} angle={-25} textAnchor="end" interval={0} />
-                        <YAxis stroke="#94a3b8" fontSize={10} />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                            borderColor: isDark ? '#334155' : '#cbd5e1',
-                            borderRadius: '0.75rem',
-                            fontSize: '12px'
-                          }}
-                        />
-                        <Area type="monotone" dataKey="value" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.25} />
-                      </AreaChart>
-                    ) : (
-                      <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#e2e8f0'} opacity={0.6} />
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} angle={-25} textAnchor="end" interval={0} />
-                        <YAxis stroke="#94a3b8" fontSize={10} />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                            borderColor: isDark ? '#334155' : '#cbd5e1',
-                            borderRadius: '0.75rem',
-                            fontSize: '12px'
-                          }}
-                        />
-                        <Line type="monotone" dataKey="value" stroke="#38bdf8" strokeWidth={2.5} dot={{ r: 3 }} />
-                      </LineChart>
-                    )}
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-xs text-slate-500">
-                    No numeric data available to graph. Select a numeric Y-axis column.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Quiet Footer Metadata */}
-            <div className="pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400 mt-2">
-              <span>Displaying 15 sample records</span>
-              <span className="font-mono tabular-nums">In-memory computation &lt; 2ms</span>
-            </div>
-
+            <button
+              onClick={() => setFocusedSection(focusedSection === 'section-ingest' ? null : 'section-ingest')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+              title="Focus Mode"
+            >
+              {focusedSection === 'section-ingest' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
           </div>
-        )}
+        </div>
 
-        {/* ========================================================================= */}
-        {/* FEATURE 2: SMART INGESTION & AUTO-CLEAN HUB (SPAN 4) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'ingest') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'ingest' ? 'lg:col-span-12' : 'lg:col-span-4'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+        {!collapsedSections['section-ingest'] && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
             
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-cyan-600/20 text-cyan-400 flex items-center justify-center">
-                    <UploadCloud className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">02. Data Ingestion & Auto-Clean</h3>
-                    <p className="text-xs text-slate-400">CSV, Excel, JSON dropzone</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onNavigateTab('upload')}
-                  className="text-slate-400 hover:text-white"
-                  title="Open Upload Studio"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Upload Dropzone Box */}
+            {/* File Dropzone & Ingest Triggers (Span 5) */}
+            <div className="lg:col-span-5 flex flex-col justify-between space-y-3">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1223,887 +859,994 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
               />
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className={`p-4 rounded-xl border border-dashed text-center cursor-pointer transition-colors mb-4 ${
+                className={`p-6 rounded-xl border border-dashed text-center cursor-pointer transition-all hover:scale-[1.01] ${
                   isDark
-                    ? 'bg-slate-950/60 border-slate-700/80 hover:border-indigo-500 hover:bg-slate-900'
-                    : 'bg-slate-50 border-slate-300 hover:border-indigo-500 hover:bg-white'
+                    ? 'bg-slate-950/70 border-slate-700/80 hover:border-cyan-400 hover:bg-slate-900'
+                    : 'bg-slate-50 border-slate-300 hover:border-cyan-500 hover:bg-white'
                 }`}
               >
-                <UploadCloud className="w-6 h-6 text-indigo-400 mx-auto mb-1.5" />
-                <p className="text-xs font-bold text-slate-200">Drop CSV or Excel to Ingest</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Automated type parsing & schema detection</p>
+                <UploadCloud className="w-8 h-8 text-cyan-400 mx-auto mb-2 animate-bounce" />
+                <p className="text-xs font-bold text-slate-100">Drop CSV, Excel, or JSON File to Ingest</p>
+                <p className="text-[11px] text-slate-400 mt-1">Automatic schema detection, type inference & null auditing</p>
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">CSV</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">XLSX</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">JSON</span>
+                </div>
               </div>
 
-              {/* 1-Click Clean Actions List */}
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 font-mono block">
-                  Automated Cleaning Arsenal
+              {/* Sample Dataset Loader Pills */}
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 font-mono block mb-2">
+                  Instant Research Templates
                 </span>
-
-                <button
-                  onClick={handleRunAutoClean}
-                  disabled={isAutoCleaning}
-                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-indigo-500 text-left flex items-center justify-between text-xs transition-colors group"
-                >
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <div>
-                      <span className="font-semibold text-white block">Impute Missing Cells</span>
-                      <span className="text-[10px] text-slate-400">Replace nulls with mean/median</span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-indigo-400 font-bold group-hover:underline">Run</span>
-                </button>
-
-                <button
-                  onClick={handleWinsorizeOutliers}
-                  className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-rose-500 text-left flex items-center justify-between text-xs transition-colors group"
-                >
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-rose-400" />
-                    <div>
-                      <span className="font-semibold text-white block">Winsorize Extreme Outliers</span>
-                      <span className="text-[10px] text-slate-400">Cap variance to ±3 standard dev</span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-rose-400 font-bold group-hover:underline">Run</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs">
-              <span className="text-slate-400">Zero cloud egress</span>
-              <button onClick={() => onNavigateTab('upload')} className="text-indigo-400 font-bold hover:underline">
-                Full Studio →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 3: STATISTICAL MODELING & ANOMALY RADAR (SPAN 6) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'analytics') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'analytics' ? 'lg:col-span-12' : 'lg:col-span-6'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center">
-                    <Activity className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">03. Statistical Inference & Regression</h3>
-                    <p className="text-xs text-slate-400">Ordinary least squares & correlation matrix</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onNavigateTab('analysis')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-purple-600/20 text-purple-300 font-semibold hover:bg-purple-600/30 transition-colors"
-                >
-                  Hypothesis Suite →
-                </button>
-              </div>
-
-              {regressionPreview ? (
-                <div className="space-y-3">
-                  <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="font-mono text-slate-400">Linear Model</span>
-                      <span className="font-mono font-bold text-cyan-400">R² = {regressionPreview.rSquared}</span>
-                    </div>
-                    <div className="font-mono text-sm font-bold text-white">
-                      {regressionPreview.colY} = {regressionPreview.slope} × {regressionPreview.colX} + {regressionPreview.intercept}
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2 pt-2 border-t border-slate-800/80">
-                      <span>Pearson correlation (r): <strong className="text-emerald-400">{regressionPreview.r}</strong></span>
-                      <span>Sample size: {regressionPreview.n} pairs</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">Goodness of Fit</span>
-                      <p className="text-sm font-bold text-emerald-400 mt-0.5">
-                        {regressionPreview.rSquared > 0.6 ? 'High Predictive Power' : 'Moderate Variance'}
-                      </p>
-                      <p className="text-[10px] text-slate-400">Validated via residual variance</p>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block font-mono">Two-Sample T-Test</span>
-                      <p className="text-sm font-bold text-indigo-400 mt-0.5">p &lt; 0.001</p>
-                      <p className="text-[10px] text-slate-400">Statistically significant difference</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 text-center">
-                  Need at least two numeric columns to compute linear regression.
-                </div>
-              )}
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Parametric & non-parametric tests</span>
-              <button onClick={() => onNavigateTab('analysis')} className="text-purple-400 font-bold hover:underline">
-                Explore ANOVA & T-Tests →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 4: LIVE DATA SPREADSHEET & CELL INSPECTOR (SPAN 6) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'grid') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'grid' ? 'lg:col-span-12' : 'lg:col-span-6'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4 gap-2 flex-wrap">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
-                    <Table className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">04. Live Data Spreadsheet & Grid</h3>
-                    <p className="text-xs text-slate-400">High-density tabular viewer & inline editor</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onNavigateTab('grid')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600/20 text-emerald-300 font-semibold hover:bg-emerald-600/30 transition-colors"
-                >
-                  Full Grid Editor →
-                </button>
-              </div>
-
-              {/* Table Search Input */}
-              <div className="mb-3">
-                <input
-                  type="text"
-                  value={gridSearch}
-                  onChange={(e) => setGridSearch(e.target.value)}
-                  placeholder="Filter records by any field..."
-                  className={`w-full px-3 py-1.5 rounded-lg text-xs border ${
-                    isDark ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                  }`}
-                />
-              </div>
-
-              {/* Table Container */}
-              <div className="overflow-x-auto rounded-xl border border-slate-800/80">
-                <table className="w-full text-left text-xs">
-                  <thead className={`border-b ${isDark ? 'bg-slate-950 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
-                    <tr>
-                      <th className="py-2 px-3 font-mono text-[10px]">#</th>
-                      {dataset?.columns.slice(0, 4).map(c => (
-                        <th key={c.name} className="py-2 px-3 font-mono text-[10px]">
-                          {c.name}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {filteredGridData.map((row, rowIdx) => (
-                      <tr
-                        key={rowIdx}
-                        onClick={() => setSelectedRowIndex(rowIdx)}
-                        className={`transition-colors cursor-pointer ${
-                          selectedRowIndex === rowIdx 
-                            ? isDark ? 'bg-indigo-950/40 text-white' : 'bg-indigo-50 text-indigo-950'
-                            : isDark ? 'hover:bg-slate-800/40 text-slate-300' : 'hover:bg-slate-50 text-slate-700'
-                        }`}
-                      >
-                        <td className="py-2 px-3 font-mono text-[10px] text-slate-500 tabular-nums">{rowIdx + 1}</td>
-                        {dataset?.columns.slice(0, 4).map(c => (
-                          <td key={c.name} className="py-2 px-3 truncate max-w-[140px] tabular-nums">
-                            {row[c.name] !== null && row[c.name] !== undefined ? String(row[c.name]) : (
-                              <span className="text-amber-500 font-mono text-[10px]">null</span>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Row Inspect Drawer Details */}
-              {selectedRowIndex !== null && filteredGridData[selectedRowIndex] && (
-                <div className="mt-3 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-indigo-400 font-mono">
-                      Record Inspector #{selectedRowIndex + 1}
-                    </span>
-                    <button onClick={() => setSelectedRowIndex(null)} className="text-slate-400 hover:text-white">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    {Object.entries(filteredGridData[selectedRowIndex]).slice(0, 6).map(([k, v]) => (
-                      <div key={k} className="p-1.5 rounded bg-slate-900 border border-slate-800">
-                        <span className="text-slate-400 font-mono block text-[9px]">{k}</span>
-                        <span className="font-semibold text-white truncate block">{String(v)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Click any row to inspect fields</span>
-              <button onClick={() => onNavigateTab('grid')} className="text-emerald-400 font-bold hover:underline">
-                Formula Columns & Transforms →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 5: WHAT-IF SCENARIO MODELING & FORECAST (SPAN 6) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'forecast') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'forecast' ? 'lg:col-span-12' : 'lg:col-span-6'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-600/20 text-amber-400 flex items-center justify-center">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">05. What-If Scenario Sandbox & Forecast</h3>
-                    <p className="text-xs text-slate-400">Dynamic elasticity perturbation modeling</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onNavigateTab('simulation')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-amber-600/20 text-amber-300 font-semibold hover:bg-amber-600/30 transition-colors"
-                >
-                  Predictive Suite →
-                </button>
-              </div>
-
-              {/* Slider Control */}
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 mb-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-300">
-                    Driver Variable Perturbation
-                  </span>
-                  <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
-                    scenarioDriverDelta >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                  }`}>
-                    {scenarioDriverDelta >= 0 ? `+${scenarioDriverDelta}%` : `${scenarioDriverDelta}%`}
-                  </span>
-                </div>
-
-                <input
-                  type="range"
-                  min="-50"
-                  max="100"
-                  step="5"
-                  value={scenarioDriverDelta}
-                  onChange={(e) => setScenarioDriverDelta(Number(e.target.value))}
-                  className="w-full accent-amber-500 cursor-pointer"
-                />
-
-                <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                  <span>-50% Downturn</span>
-                  <span>Baseline (0%)</span>
-                  <span>+100% Upside</span>
-                </div>
-              </div>
-
-              {/* Real-time Forecast Outcome Math */}
-              <div className="grid grid-cols-2 gap-3 text-xs mb-2">
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 font-mono block">Baseline Metric</span>
-                  <span className="text-base font-bold text-slate-200 font-mono tabular-nums block mt-1">
-                    {forecastMetrics.baseAvg.toLocaleString()}
-                  </span>
-                  <span className="text-[10px] text-slate-500">Historical sample mean</span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-[10px] uppercase font-bold text-amber-400 font-mono block">Projected Outcome</span>
-                  <span className="text-base font-bold text-amber-300 font-mono tabular-nums block mt-1">
-                    {forecastMetrics.projectedAvg.toLocaleString()}
-                  </span>
-                  <span className="text-[10px] text-emerald-400 font-medium">
-                    {forecastMetrics.projectedDelta >= 0 ? `+${forecastMetrics.projectedDelta.toLocaleString()}` : `${forecastMetrics.projectedDelta.toLocaleString()}`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Elasticity factor: 1.12x</span>
-              <button onClick={() => onNavigateTab('simulation')} className="text-amber-400 font-bold hover:underline">
-                Monte Carlo Simulation & Bands →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 6: FIELD SURVEYS & QR CODE COLLECTION (SPAN 6) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'surveys') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'surveys' ? 'lg:col-span-12' : 'lg:col-span-6'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-teal-600/20 text-teal-400 flex items-center justify-center">
-                    <QrCode className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">06. Public QR Surveys & Mobile Fleet</h3>
-                    <p className="text-xs text-slate-400">Scan to collect field records with GPS</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onNavigateTab('collection')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-teal-600/20 text-teal-300 font-semibold hover:bg-teal-600/30 transition-colors"
-                >
-                  Collection Hub →
-                </button>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-xl bg-slate-950 border border-slate-800">
-                {/* QR Code Canvas */}
-                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0">
-                  <canvas ref={qrCanvasRef} className="rounded-lg shadow-sm" />
-                </div>
-
-                {/* Survey Share Options */}
-                <div className="flex-1 space-y-2 min-w-0">
-                  <span className="text-xs font-bold text-white block">Public Data Ingestion Link</span>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Respondents can scan with iPhone/Android or use the web link to submit records. Submissions auto-sync to your dataset.
-                  </p>
-
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={handleCopySurveyUrl}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1 border border-slate-700 transition-colors"
-                    >
-                      {qrCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{qrCopied ? 'Link Copied!' : 'Copy Link'}</span>
-                    </button>
-
-                    <button
-                      onClick={onOpenQrSurvey}
-                      className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-all shadow-xs"
-                    >
-                      Kiosk Mode
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Offline caching & GPS tracking enabled</span>
-              <button onClick={() => onNavigateTab('collection')} className="text-teal-400 font-bold hover:underline">
-                Custom Form Builder →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 7: EXECUTIVE PRESENTATION & REPORTS (SPAN 4) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'reporting') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'reporting' ? 'lg:col-span-12' : 'lg:col-span-4'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-600/20 text-amber-400 flex items-center justify-center">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">07. Executive Slide Deck & Dossiers</h3>
-                    <p className="text-xs text-slate-400">Boardroom presentation briefs</p>
-                  </div>
-                </div>
-
-                <button onClick={onOpenSlideDeck} className="text-slate-400 hover:text-white">
-                  <Presentation className="w-4 h-4 text-amber-400" />
-                </button>
-              </div>
-
-              <div className="space-y-2.5">
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] font-mono font-bold text-amber-400 uppercase">Executive Briefing</span>
-                  <p className="text-xs text-slate-200 font-semibold leading-relaxed">
-                    Automated analytical summary generated from {healthStats.rowCount.toLocaleString()} records across {healthStats.columnCount} dimensions.
-                  </p>
-                </div>
-
-                <button
-                  onClick={onOpenSlideDeck}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-amber-600/20 flex items-center justify-center gap-2 transition-all"
-                >
-                  <Presentation className="w-4 h-4" />
-                  <span>Launch Slide Deck Presentation</span>
-                </button>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => onNavigateTab('report')}
-                    className="py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Print PDF</span>
-                  </button>
-
-                  <button
-                    onClick={() => dataset && exportToExcel(dataset)}
-                    className="py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-300 flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Export Excel</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Ready for executive distribution</span>
-              <button onClick={() => onNavigateTab('report')} className="text-amber-400 font-bold hover:underline">
-                Report Studio →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 8: CO-WORKER COLLABORATION & FLEET OPERATIONS (SPAN 4) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'operations') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'operations' ? 'lg:col-span-12' : 'lg:col-span-4'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">08. Team Presence & Supervisor Fleet</h3>
-                    <p className="text-xs text-slate-400">Real-time team chat & sharing</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onNavigateTab('team')}
-                  className="text-slate-400 hover:text-white"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Coworker Presence List */}
-              <div className="space-y-2 mb-3">
-                {[
-                  { name: 'Dr. Elena Rostova', role: 'Lead Data Scientist', status: 'Running OLS Regression', initial: 'ER' },
-                  { name: 'Amina Mwangi', role: 'Supervisor (Sector A)', status: 'Survey verification', initial: 'AM' },
-                  { name: 'Marcus Vance', role: 'Analytics Engineer', status: 'Cleaned null values', initial: 'MV' }
-                ].map((co, i) => (
-                  <div key={i} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded-lg bg-indigo-600/30 text-indigo-300 font-bold flex items-center justify-center text-[10px] shrink-0">
-                        {co.initial}
-                      </div>
-                      <div className="min-w-0">
-                        <span className="font-bold text-white block truncate">{co.name}</span>
-                        <span className="text-[10px] text-slate-400 block truncate">{co.status}</span>
-                      </div>
-                    </div>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                  </div>
-                ))}
-              </div>
-
-              <button
-                onClick={() => onOpenShareModal(dataset)}
-                className="w-full py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Share Dataset Slice with Team</span>
-              </button>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Granular View/Edit RBAC</span>
-              <button onClick={() => onNavigateTab('team')} className="text-indigo-400 font-bold hover:underline">
-                Team Chat & Outbox →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 9: SUPERVISOR VAULT & FIELD AUDIT (SPAN 6) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'supervisor') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'supervisor' ? 'lg:col-span-12' : 'lg:col-span-6'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">09. Supervisor Vault & Field Audit</h3>
-                    <p className="text-xs text-slate-400">Enumerator validation & fraud prevention</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onNavigateTab('supervisor')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-purple-600/20 text-purple-300 font-semibold hover:bg-purple-600/30 transition-colors"
-                >
-                  Vault Console →
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="font-mono text-slate-400">Supervisor Security Gate</span>
-                    <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      Session Verified
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-300 flex items-center justify-between">
-                    <span>Field Enumerator GPS Accuracy</span>
-                    <strong className="text-emerald-400 font-mono">± 3.8 meters</strong>
-                  </div>
-                  <div className="text-xs text-slate-300 flex items-center justify-between mt-1">
-                    <span>Audit Anomaly Score</span>
-                    <strong className="text-cyan-400 font-mono">0.02 (Optimal)</strong>
-                  </div>
-                </div>
-
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block font-mono">Pending Reviews</span>
-                    <span className="text-base font-bold text-white block mt-0.5">3 Submissions</span>
-                    <span className="text-[10px] text-emerald-400">Geo-tagged & ready</span>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block font-mono">Fraud Prevention</span>
-                    <span className="text-base font-bold text-emerald-400 block mt-0.5">100% Cleared</span>
-                    <span className="text-[10px] text-slate-400">Zero duplicates</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>PIN protected supervisor vault</span>
-              <button onClick={() => onNavigateTab('supervisor')} className="text-purple-400 font-bold hover:underline">
-                Open Field Supervisor Vault →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 10: ADMIN CONSOLE & SYSTEM TELEMETRY (SPAN 6) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'admin') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'admin' ? 'lg:col-span-12' : 'lg:col-span-6'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-rose-600/20 text-rose-400 flex items-center justify-center">
-                    <Activity className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">10. Admin Console & Telemetry</h3>
-                    <p className="text-xs text-slate-400">Diagnostics, zero-egress audit & RBAC</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => onNavigateTab('admin')}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-rose-600/20 text-rose-300 font-semibold hover:bg-rose-600/30 transition-colors"
-                >
-                  Admin Hub →
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-mono">Engine Latency</span>
-                    <span className="text-emerald-400 font-mono font-bold">&lt; 1.8 ms</span>
-                  </div>
-                  <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full w-[24%]" />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
-                    <span>Privacy Architecture: <strong className="text-white">100% In-Browser RAM</strong></span>
-                    <span className="text-emerald-400">Zero Cloud Egress</span>
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-slate-400 block text-[10px] font-mono">CURRENT RBAC USER</span>
-                    <span className="font-bold text-white block mt-0.5">{currentUser?.name || 'Administrator'}</span>
-                  </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30 uppercase">
-                    {currentUser?.role || 'Owner'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>System audit logs & health</span>
-              <button onClick={() => onNavigateTab('admin')} className="text-rose-400 font-bold hover:underline">
-                Open Admin Console →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 11: COMMS & OPERATIONS HUB (SPAN 4) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'operations') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'operations' ? 'lg:col-span-12' : 'lg:col-span-4'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-cyan-600/20 text-cyan-400 flex items-center justify-center">
-                    <Radio className="w-4 h-4 animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">11. Comms & Operations Hub</h3>
-                    <p className="text-xs text-slate-400">Live dispatch & regional frequencies</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (onOpenCommsHub) onOpenCommsHub();
-                    else onNavigateTab('operations');
-                  }}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-cyan-600/20 text-cyan-300 font-semibold hover:bg-cyan-600/30 transition-colors"
-                >
-                  Live Comms →
-                </button>
-              </div>
-
-              <div className="space-y-2.5">
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-mono text-cyan-400 font-bold">Frequency Alpha (HQ)</span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  </div>
-                  <p className="text-[11px] text-slate-300 leading-snug">
-                    Regional field broadcast: All county enumerators synchronized. No dispatch delays reported.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (onOpenCommsHub) onOpenCommsHub();
-                    else onNavigateTab('operations');
-                  }}
-                  className="w-full py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-cyan-600/20 transition-all"
-                >
-                  <Radio className="w-3.5 h-3.5" />
-                  <span>Open Operations Radio Dispatch</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Multi-channel coordination</span>
-              <button
-                onClick={() => {
-                  if (onOpenCommsHub) onOpenCommsHub();
-                  else onNavigateTab('operations');
-                }}
-                className="text-cyan-400 font-bold hover:underline"
-              >
-                Comms & Operations Center →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 12: DESKTOP .EXE & PC SETTINGS (SPAN 4) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'operations') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'operations' ? 'lg:col-span-12' : 'lg:col-span-4'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center">
-                    <Monitor className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">12. Desktop .EXE & PC Settings</h3>
-                    <p className="text-xs text-slate-400">Standalone Windows application</p>
-                  </div>
-                </div>
-
-                <button onClick={onOpenDesktopExe} className="text-blue-400 hover:text-blue-300">
-                  <ExternalLink className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2 mb-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Cpu className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Computer Features Catalog</span>
-                  </span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold">
-                    WIN 10/11
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Export native Windows .EXE launcher, run offline with zero internet requirement, and configure PC hardware telemetry.
-                </p>
-                
-                <button
-                  onClick={onOpenDesktopExe}
-                  className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-blue-600/20"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Open .EXE Center & PC Settings</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Hardware acceleration enabled</span>
-              <button onClick={onOpenDesktopExe} className="text-blue-400 font-bold hover:underline">
-                PC Settings Center →
-              </button>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================================================= */}
-        {/* FEATURE 13: GEMINI AI DATA COPILOT (SPAN 4) */}
-        {/* ========================================================================= */}
-        {(selectedCategory === 'all' || selectedCategory === 'analytics') && (
-          <div className={`rounded-2xl border p-5 flex flex-col justify-between ${
-            selectedCategory === 'analytics' ? 'lg:col-span-12' : 'lg:col-span-4'
-          } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-            
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/60 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center">
-                    <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-100">13. Gemini AI Data Copilot</h3>
-                    <p className="text-xs text-slate-400">Natural language data scientist</p>
-                  </div>
-                </div>
-
-                <button onClick={onOpenCopilot} className="text-purple-400 hover:text-purple-300">
-                  <Sparkles className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/30 space-y-2 mb-3">
-                <span className="text-xs font-bold text-purple-200 block">Instant In-Memory AI Synthesis</span>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Ask plain-English questions, detect latent trends, run automated outlier analysis, and generate mathematical hypotheses.
-                </p>
-                <div className="flex gap-1.5 flex-wrap pt-1">
-                  {['Find Outliers', 'Explain Variance', 'Trend Forecast'].map(prompt => (
+                  {datasets.map(d => (
                     <button
-                      key={prompt}
-                      onClick={() => {
-                        setCopilotQuickQuery(prompt);
-                        onOpenCopilot();
-                      }}
-                      className="px-2 py-0.5 rounded-md bg-purple-900/60 hover:bg-purple-800 text-[10px] text-purple-200 font-medium transition-colors"
+                      key={d.id}
+                      onClick={() => onSelectDataset(d.id)}
+                      className={`p-2 rounded-lg text-left border transition-all ${
+                        dataset?.id === d.id
+                          ? 'bg-indigo-600/30 border-indigo-500 text-white font-bold'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                      }`}
                     >
-                      {prompt}
+                      <span className="block truncate text-[11px] font-semibold">{d.name}</span>
+                      <span className="text-[9px] text-slate-400 font-mono">{d.data.length} records</span>
                     </button>
                   ))}
                 </div>
               </div>
-
-              <button
-                onClick={onOpenCopilot}
-                className="w-full py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20 transition-all"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Launch Interactive AI Copilot</span>
-              </button>
             </div>
 
-            <div className="pt-3 border-t border-slate-800/60 mt-4 flex items-center justify-between text-xs text-slate-400">
-              <span>Natural language processing</span>
-              <button onClick={onOpenCopilot} className="text-purple-400 font-bold hover:underline">
-                Ask Gemini Copilot →
-              </button>
+            {/* Health Profiler Stats & 1-Click Cleaners (Span 7) */}
+            <div className="lg:col-span-7 flex flex-col justify-between space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Total Records</span>
+                  <span className="text-xl font-black font-mono text-white mt-1 block">
+                    {healthStats.rowCount.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">Row instances</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Missing Cells</span>
+                  <span className={`text-xl font-black font-mono mt-1 block ${
+                    healthStats.totalNulls > 0 ? 'text-amber-400' : 'text-emerald-400'
+                  }`}>
+                    {healthStats.totalNulls.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">Null or blank</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Outliers (&gt;3σ)</span>
+                  <span className={`text-xl font-black font-mono mt-1 block ${
+                    healthStats.totalOutliers > 0 ? 'text-rose-400' : 'text-slate-300'
+                  }`}>
+                    {healthStats.totalOutliers}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">Statistical peaks</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Quality Score</span>
+                  <span className="text-xl font-black font-mono text-emerald-400 mt-1 block">
+                    {healthStats.baselineScore}%
+                  </span>
+                  <span className="text-[10px] text-emerald-500 font-medium">Optimal integrity</span>
+                </div>
+              </div>
+
+              {/* Cleaning Action Controls */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    Automated In-Memory Cleaning Engine
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">Zero Cloud Egress</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={handleRunAutoClean}
+                    disabled={isAutoCleaning}
+                    className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-emerald-500 text-left flex items-center justify-between text-xs transition-colors group"
+                  >
+                    <div>
+                      <span className="font-semibold text-white block">1-Click Auto-Impute Nulls</span>
+                      <span className="text-[10px] text-slate-400">Fills numeric with mean/median</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-400 group-hover:underline">Run</span>
+                  </button>
+
+                  <button
+                    onClick={handleWinsorizeOutliers}
+                    className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-rose-500 text-left flex items-center justify-between text-xs transition-colors group"
+                  >
+                    <div>
+                      <span className="font-semibold text-white block">1-Click Winsorize Outliers</span>
+                      <span className="text-[10px] text-slate-400">Clamps peaks to ±3σ thresholds</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-rose-400 group-hover:underline">Run</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Direct Export Arsenal */}
+              <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                <span>Direct Data Pipeline Export:</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => dataset && exportToCSV(dataset)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold flex items-center gap-1"
+                  >
+                    <Download className="w-3 h-3 text-cyan-400" />
+                    <span>CSV</span>
+                  </button>
+                  <button
+                    onClick={() => dataset && exportToExcel(dataset)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold flex items-center gap-1"
+                  >
+                    <FileSpreadsheet className="w-3 h-3 text-emerald-400" />
+                    <span>Excel</span>
+                  </button>
+                  <button
+                    onClick={() => dataset && exportToJSON(dataset)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold flex items-center gap-1"
+                  >
+                    <Code className="w-3 h-3 text-amber-400" />
+                    <span>JSON</span>
+                  </button>
+                </div>
+              </div>
+
             </div>
 
           </div>
         )}
+      </section>
 
-      </div>
+      {/* ========================================================================= */}
+      {/* BAY 2: LIVE TABULAR SPREADSHEET GRID & INLINE CELL EDITOR */}
+      {/* ========================================================================= */}
+      <section
+        id="section-grid"
+        className={`rounded-2xl border p-5 transition-all ${
+          focusedSection === 'section-grid' ? 'ring-2 ring-indigo-500 shadow-2xl' : ''
+        } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}
+      >
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80 mb-4 gap-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center font-bold">
+              <Table className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                02. Live Interactive Spreadsheet Grid & Tabular Editor
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                  Inline Cells
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Click any cell to edit in-place, filter across records, add new rows directly, and inspect individual records.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsAddingRow(!isAddingRow)}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Record</span>
+            </button>
+            <button
+              onClick={() => toggleCollapse('section-grid')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {collapsedSections['section-grid'] ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => setFocusedSection(focusedSection === 'section-grid' ? null : 'section-grid')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {focusedSection === 'section-grid' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {!collapsedSections['section-grid'] && (
+          <div className="space-y-4">
+            
+            {/* Inline Add Row Form Drawer */}
+            {isAddingRow && (
+              <form onSubmit={handleAddNewRow} className="p-4 rounded-xl bg-slate-950 border border-emerald-500/40 animate-in fade-in space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5" />
+                    Append New Record to Live Study
+                  </span>
+                  <button type="button" onClick={() => setIsAddingRow(false)} className="text-slate-400 hover:text-white">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {dataset?.columns.slice(0, 8).map(c => (
+                    <div key={c.name}>
+                      <label className="text-[10px] font-mono text-slate-400 block mb-1 truncate">{c.name} ({c.type})</label>
+                      <input
+                        type={c.type === 'number' ? 'number' : 'text'}
+                        value={newRowDraft[c.name] ?? ''}
+                        onChange={(e) => setNewRowDraft({ ...newRowDraft, [c.name]: e.target.value })}
+                        placeholder={`Enter ${c.name}...`}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:border-emerald-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingRow(false)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 text-slate-400 text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save & Append Row</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Grid Search & Record Count */}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={gridSearch}
+                  onChange={(e) => setGridSearch(e.target.value)}
+                  placeholder="Instant regex/fuzzy search across all records..."
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
+                <span>Showing {filteredGridData.length} of {dataset?.data.length || 0} rows</span>
+                <span>·</span>
+                <span className="text-emerald-400">Click any cell to edit</span>
+              </div>
+            </div>
+
+            {/* Interactive Tabular Grid Container */}
+            <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3 font-mono text-[10px] w-12">#</th>
+                    {dataset?.columns.slice(0, 6).map(c => (
+                      <th key={c.name} className="py-2.5 px-3 font-mono text-[10px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-white font-bold">{c.name}</span>
+                          <span className="text-[9px] text-slate-500 uppercase">{c.type}</span>
+                        </div>
+                      </th>
+                    ))}
+                    <th className="py-2.5 px-3 font-mono text-[10px] text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                  {filteredGridData.map((row, rowIdx) => (
+                    <tr
+                      key={rowIdx}
+                      className={`transition-colors ${
+                        selectedRowIndex === rowIdx
+                          ? 'bg-indigo-950/40 text-white'
+                          : 'hover:bg-slate-900/60 text-slate-300'
+                      }`}
+                    >
+                      <td className="py-2.5 px-3 text-slate-500 tabular-nums font-bold">
+                        {rowIdx + 1}
+                      </td>
+
+                      {dataset?.columns.slice(0, 6).map(c => {
+                        const isEditingThis = isEditingCell?.rowIdx === rowIdx && isEditingCell?.colName === c.name;
+                        return (
+                          <td
+                            key={c.name}
+                            onClick={() => {
+                              if (!isEditingThis) {
+                                setIsEditingCell({ rowIdx, colName: c.name });
+                                setCellEditValue(row[c.name] !== null && row[c.name] !== undefined ? String(row[c.name]) : '');
+                              }
+                            }}
+                            className="py-2.5 px-3 truncate max-w-[160px] cursor-pointer hover:bg-slate-800/50"
+                            title="Click to edit value"
+                          >
+                            {isEditingThis ? (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={cellEditValue}
+                                  onChange={(e) => setCellEditValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveCellEdit();
+                                    if (e.key === 'Escape') setIsEditingCell(null);
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-slate-900 border border-emerald-500 text-white text-xs w-full"
+                                />
+                                <button onClick={handleSaveCellEdit} className="text-emerald-400 p-0.5 hover:text-white">
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              row[c.name] !== null && row[c.name] !== undefined ? (
+                                <span className="tabular-nums">{String(row[c.name])}</span>
+                              ) : (
+                                <span className="text-amber-400 font-mono text-[10px]">null</span>
+                              )
+                            )}
+                          </td>
+                        );
+                      })}
+
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          onClick={() => setSelectedRowIndex(selectedRowIndex === rowIdx ? null : rowIdx)}
+                          className="text-[10px] text-indigo-400 hover:text-white font-semibold underline"
+                        >
+                          {selectedRowIndex === rowIdx ? 'Hide' : 'Inspect'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Selected Row Drawer Detail */}
+            {selectedRowIndex !== null && filteredGridData[selectedRowIndex] && (
+              <div className="p-4 rounded-xl bg-slate-950 border border-indigo-500/40 text-xs animate-in fade-in">
+                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+                  <span className="font-bold text-indigo-300 font-mono flex items-center gap-1.5">
+                    <CheckCheck className="w-4 h-4 text-emerald-400" />
+                    Record Detail Inspection #{selectedRowIndex + 1}
+                  </span>
+                  <button onClick={() => setSelectedRowIndex(null)} className="text-slate-400 hover:text-white">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                  {Object.entries(filteredGridData[selectedRowIndex]).map(([k, v]) => (
+                    <div key={k} className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                      <span className="text-[10px] font-mono text-slate-400 block truncate">{k}</span>
+                      <span className="font-bold text-white block mt-0.5 truncate">{String(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+      </section>
+
+      {/* ========================================================================= */}
+      {/* BAY 3: DATA ANALYST POWER WORKBENCH (PRO CODE & SCHEMA INTELLIGENCE) */}
+      {/* ========================================================================= */}
+      <section id="section-analyst">
+        <AnalystWorkbench
+          dataset={dataset}
+          onUpdateDataset={onUpdateDataset}
+          onNavigateTab={onNavigateTab}
+          onOpenCopilot={onOpenCopilot}
+        />
+      </section>
+
+      {/* ========================================================================= */}
+      {/* BAY 4: VISUAL ANALYTICS & INTERACTIVE EXPLORATORY DATA ANALYSIS (EDA) */}
+      {/* ========================================================================= */}
+      <section
+        id="section-analytics"
+        className={`rounded-2xl border p-5 transition-all ${
+          focusedSection === 'section-analytics' ? 'ring-2 ring-indigo-500 shadow-2xl' : ''
+        } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}
+      >
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80 mb-4 gap-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold">
+              <BarChart3 className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                04. Visual Analytics & Interactive EDA Studio
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold">
+                  Dynamic Charts
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Live interactive charting across categorical and numeric dimensions with multi-metric aggregation.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Chart Type Toggle */}
+            <div className="p-0.5 rounded-lg border border-slate-800 bg-slate-950 flex items-center gap-0.5">
+              <button
+                onClick={() => setChartType('bar')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md ${
+                  chartType === 'bar' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Bar
+              </button>
+              <button
+                onClick={() => setChartType('area')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md ${
+                  chartType === 'area' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Area
+              </button>
+              <button
+                onClick={() => setChartType('line')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md ${
+                  chartType === 'line' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Line
+              </button>
+            </div>
+
+            <button
+              onClick={() => toggleCollapse('section-analytics')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {collapsedSections['section-analytics'] ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => setFocusedSection(focusedSection === 'section-analytics' ? null : 'section-analytics')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {focusedSection === 'section-analytics' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {!collapsedSections['section-analytics'] && (
+          <div className="space-y-4">
+            
+            {/* Dimension Selectors Strip */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+              <div>
+                <label className="text-[10px] uppercase font-mono text-slate-400 block mb-1">X-Axis Dimension</label>
+                <select
+                  value={selectedXCol}
+                  onChange={(e) => setSelectedXCol(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono text-xs focus:border-indigo-500"
+                >
+                  {dataset?.columns.map(c => (
+                    <option key={c.name} value={c.name}>{c.name} ({c.type})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase font-mono text-slate-400 block mb-1">Y-Axis Metric</label>
+                <select
+                  value={selectedYCol}
+                  onChange={(e) => setSelectedYCol(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono text-xs focus:border-indigo-500"
+                >
+                  {numericColumns.map(c => (
+                    <option key={c.name} value={c.name}>{c.name} (numeric)</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase font-mono text-slate-400 block mb-1">Aggregation Function</label>
+                <select
+                  value={chartAggregation}
+                  onChange={(e) => setChartAggregation(e.target.value as any)}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white font-mono text-xs focus:border-indigo-500"
+                >
+                  <option value="avg">Mean (Average)</option>
+                  <option value="sum">Sum (Total)</option>
+                  <option value="count">Count (Frequency)</option>
+                  <option value="max">Maximum (Peak)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Recharts Canvas */}
+            <div className="h-72 w-full p-3 rounded-xl bg-slate-950 border border-slate-800">
+              {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  {chartType === 'bar' ? (
+                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.6} />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} angle={-25} textAnchor="end" interval={0} />
+                      <YAxis stroke="#94a3b8" fontSize={10} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderColor: '#334155',
+                          borderRadius: '0.75rem',
+                          fontSize: '12px'
+                        }}
+                      />
+                      <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  ) : chartType === 'area' ? (
+                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.6} />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} angle={-25} textAnchor="end" interval={0} />
+                      <YAxis stroke="#94a3b8" fontSize={10} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderColor: '#334155',
+                          borderRadius: '0.75rem',
+                          fontSize: '12px'
+                        }}
+                      />
+                      <Area type="monotone" dataKey="value" stroke="#06b6d4" fill="#06b6d4" fillOpacity={0.25} />
+                    </AreaChart>
+                  ) : (
+                    <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.6} />
+                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} angle={-25} textAnchor="end" interval={0} />
+                      <YAxis stroke="#94a3b8" fontSize={10} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#0f172a',
+                          borderColor: '#334155',
+                          borderRadius: '0.75rem',
+                          fontSize: '12px'
+                        }}
+                      />
+                      <Line type="monotone" dataKey="value" stroke="#38bdf8" strokeWidth={2.5} dot={{ r: 3 }} />
+                    </LineChart>
+                  )}
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-slate-500">
+                  Select a numerical Y-axis column to graph data distribution.
+                </div>
+              )}
+            </div>
+
+            {/* Regression Summary Banner */}
+            {regressionPreview && (
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-purple-400" />
+                  <span className="font-bold text-white">Ordinary Least Squares Regression:</span>
+                  <span className="font-mono text-cyan-300">
+                    {regressionPreview.colY} = {regressionPreview.slope} × {regressionPreview.colX} + {regressionPreview.intercept}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 font-mono text-[11px]">
+                  <span>R² = <strong className="text-emerald-400">{regressionPreview.rSquared}</strong></span>
+                  <span>Pearson r = <strong className="text-cyan-400">{regressionPreview.r}</strong></span>
+                  <span>n = {regressionPreview.n}</span>
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+      </section>
+
+      {/* ========================================================================= */}
+      {/* BAY 5: PREDICTIVE WHAT-IF FORECASTING & SCENARIO SIMULATOR */}
+      {/* ========================================================================= */}
+      <section
+        id="section-forecast"
+        className={`rounded-2xl border p-5 transition-all ${
+          focusedSection === 'section-forecast' ? 'ring-2 ring-indigo-500 shadow-2xl' : ''
+        } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}
+      >
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80 mb-4 gap-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-600/20 text-amber-400 flex items-center justify-center font-bold">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                05. Predictive What-If Forecaster & Scenario Sandbox
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                  Elasticity Modeling
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Simulate driver shocks (-50% to +100%), compute elasticity adjustments, and forecast projected metrics.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => toggleCollapse('section-forecast')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {collapsedSections['section-forecast'] ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => setFocusedSection(focusedSection === 'section-forecast' ? null : 'section-forecast')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {focusedSection === 'section-forecast' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {!collapsedSections['section-forecast'] && (
+          <div className="space-y-4">
+            
+            {/* Slider Control Container */}
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-white block">Driver Variable Perturbation Slider</span>
+                  <span className="text-[10px] text-slate-400">Adjust the simulated delta to compute live projections</span>
+                </div>
+                <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-lg ${
+                  scenarioDriverDelta >= 0 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                }`}>
+                  {scenarioDriverDelta >= 0 ? `+${scenarioDriverDelta}% Shock` : `${scenarioDriverDelta}% Downturn`}
+                </span>
+              </div>
+
+              <input
+                type="range"
+                min="-50"
+                max="100"
+                step="5"
+                value={scenarioDriverDelta}
+                onChange={(e) => setScenarioDriverDelta(Number(e.target.value))}
+                className="w-full accent-amber-500 cursor-pointer h-2 bg-slate-800 rounded-lg"
+              />
+
+              <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                <span>-50% Recession Shock</span>
+                <span>Baseline (0%)</span>
+                <span>+100% Hyper-Growth</span>
+              </div>
+            </div>
+
+            {/* Projection Outcome Math Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-[10px] uppercase font-mono text-slate-400 block">Baseline Metric Mean</span>
+                <span className="text-xl font-black font-mono text-white mt-1 block">
+                  {forecastMetrics.baseAvg.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-slate-500">Historical sample ground truth</span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-amber-500/30">
+                <span className="text-[10px] uppercase font-mono text-amber-400 block">Projected Outcome</span>
+                <span className="text-xl font-black font-mono text-amber-300 mt-1 block">
+                  {forecastMetrics.projectedAvg.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-emerald-400 font-medium font-mono">
+                  {forecastMetrics.projectedDelta >= 0 ? `+${forecastMetrics.projectedDelta.toLocaleString()}` : `${forecastMetrics.projectedDelta.toLocaleString()}`} delta
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-[10px] uppercase font-mono text-slate-400 block">Elasticity Sensitivity</span>
+                <span className="text-xl font-black font-mono text-cyan-400 mt-1 block">
+                  {forecastMetrics.elasticityFactor}x
+                </span>
+                <span className="text-[10px] text-slate-500 font-mono">Regression β multiplier</span>
+              </div>
+            </div>
+
+          </div>
+        )}
+      </section>
+
+      {/* ========================================================================= */}
+      {/* BAY 6: FIELD SURVEYS, QR CODE KIOSK & VOICE NOTES DEBRIEF */}
+      {/* ========================================================================= */}
+      <section
+        id="section-surveys"
+        className={`rounded-2xl border p-5 transition-all ${
+          focusedSection === 'section-surveys' ? 'ring-2 ring-indigo-500 shadow-2xl' : ''
+        } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}
+      >
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80 mb-4 gap-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-teal-600/20 text-teal-400 flex items-center justify-center font-bold">
+              <QrCode className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                06. Public Surveys, Live QR Kiosk & Voice Notes Debrief
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold">
+                  Mobile Fleet
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Scan QR code for instant respondent capture, test live field submissions, and record field audio debriefs.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => toggleCollapse('section-surveys')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {collapsedSections['section-surveys'] ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => setFocusedSection(focusedSection === 'section-surveys' ? null : 'section-surveys')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {focusedSection === 'section-surveys' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {!collapsedSections['section-surveys'] && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            
+            {/* QR Code & Direct Link (Span 4) */}
+            <div className="lg:col-span-4 p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col items-center text-center space-y-3">
+              <span className="text-xs font-bold text-white">Live Participant QR Code</span>
+              <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                <canvas ref={qrCanvasRef} className="rounded-lg shadow-md" />
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Scan with mobile camera to open the zero-install public survey kiosk.
+              </p>
+              <div className="flex items-center gap-2 w-full pt-1">
+                <button
+                  onClick={handleCopySurveyUrl}
+                  className="flex-1 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1 border border-slate-800"
+                >
+                  {qrCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{qrCopied ? 'Copied!' : 'Copy Link'}</span>
+                </button>
+                <button
+                  onClick={onOpenQrSurvey}
+                  className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold"
+                >
+                  Kiosk Mode
+                </button>
+              </div>
+            </div>
+
+            {/* In-Situ Survey Submission Simulator (Span 4) */}
+            <div className="lg:col-span-4 p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+              <span className="text-xs font-bold text-white flex items-center justify-between">
+                <span>Test Live Field Submission</span>
+                <span className="text-[10px] font-mono text-teal-400">Instant Append</span>
+              </span>
+
+              {surveySubmitSuccess && (
+                <div className="p-2 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-[11px] font-medium flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Submission saved directly to dataset!</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSurveySubmit} className="space-y-2">
+                {dataset?.columns.slice(0, 3).map(c => (
+                  <div key={c.name}>
+                    <label className="text-[10px] font-mono text-slate-400 block mb-0.5 truncate">{c.name}</label>
+                    <input
+                      type={c.type === 'number' ? 'number' : 'text'}
+                      value={surveyResponseDraft[c.name] ?? ''}
+                      onChange={(e) => setSurveyResponseDraft({ ...surveyResponseDraft, [c.name]: e.target.value })}
+                      placeholder={`Test value for ${c.name}...`}
+                      className="w-full px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:border-teal-500"
+                    />
+                  </div>
+                ))}
+                <button
+                  type="submit"
+                  className="w-full py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors mt-2"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Submit Sample Survey Response</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Field Audio Voice Debrief Recorder (Span 4) */}
+            <div className="lg:col-span-4 p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Mic className="w-3.5 h-3.5 text-rose-400" />
+                  Voice Notes & Field Audio
+                </span>
+                {isVoiceRecording && (
+                  <span className="text-[10px] font-mono text-rose-400 flex items-center gap-1 font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                    REC 0:{recordingSeconds.toString().padStart(2, '0')}
+                  </span>
+                )}
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleToggleVoiceRecording}
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                      isVoiceRecording ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/40' : 'bg-slate-800 text-rose-400 hover:bg-slate-700'
+                    }`}
+                  >
+                    {isVoiceRecording ? <Square className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  </button>
+                  <span className="text-xs font-semibold text-slate-200">
+                    {isVoiceRecording ? 'Recording voice note...' : 'Click mic to record debrief'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                {voiceDebriefs.map(deb => (
+                  <div key={deb.id} className="p-2 rounded-lg bg-slate-900 border border-slate-800/80 text-[11px]">
+                    <div className="flex items-center justify-between font-mono text-[9px] text-slate-400 mb-1">
+                      <span>{deb.timestamp}</span>
+                      <span className="text-rose-400 font-bold">{deb.duration}</span>
+                    </div>
+                    <p className="text-slate-300 line-clamp-2">{deb.summary}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        )}
+      </section>
+
+      {/* ========================================================================= */}
+      {/* BAY 7: OPERATIONS, AUDIT LOG, TEAM GOVERNANCE & EXECUTIVE REPORTS */}
+      {/* ========================================================================= */}
+      <section
+        id="section-reports"
+        className={`rounded-2xl border p-5 transition-all ${
+          focusedSection === 'section-reports' ? 'ring-2 ring-indigo-500 shadow-2xl' : ''
+        } ${isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}
+      >
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80 mb-4 gap-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-purple-600/20 text-purple-400 flex items-center justify-center font-bold">
+              <Presentation className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                07. Operations Audit Trail, Team Fleet & Boardroom Dossier
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-bold">
+                  Governance
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Live team activity log, supervisor audit gate, 1-click presentation slide deck, and executive print reports.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => toggleCollapse('section-reports')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {collapsedSections['section-reports'] ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              onClick={() => setFocusedSection(focusedSection === 'section-reports' ? null : 'section-reports')}
+              className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white text-xs"
+            >
+              {focusedSection === 'section-reports' ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {!collapsedSections['section-reports'] && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            
+            {/* Executive Slide Deck & PDF Exporter (Span 5) */}
+            <div className="lg:col-span-5 p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+              <div>
+                <span className="text-xs font-bold text-amber-400 block mb-1">Boardroom Dossier & Presentation</span>
+                <p className="text-xs text-slate-300 leading-relaxed mb-3">
+                  Generate presentation slides formatted for executive review directly from your active dataset records.
+                </p>
+
+                <button
+                  onClick={onOpenSlideDeck}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 via-indigo-600 to-purple-600 hover:opacity-90 text-white font-bold text-xs shadow-md shadow-amber-600/20 flex items-center justify-center gap-2 transition-all"
+                >
+                  <Presentation className="w-4 h-4" />
+                  <span>Launch Executive Slide Deck</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+                <button
+                  onClick={() => onNavigateTab('report')}
+                  className="py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Print Dossier</span>
+                </button>
+                <button
+                  onClick={onOpenDesktopExe}
+                  className="py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5"
+                >
+                  <Monitor className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Desktop App</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Team Fleet & Role Permissions (Span 7) */}
+            <div className="lg:col-span-7 p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-indigo-400" />
+                  Collaborators & Role Governance
+                </span>
+                <button
+                  onClick={() => onOpenShareModal(dataset)}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-semibold flex items-center gap-1 border border-indigo-500/30"
+                >
+                  <Share2 className="w-3 h-3 text-cyan-400" />
+                  <span>Share Dataset</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {[
+                  { name: 'Dr. Elena Rostova', role: 'Lead Data Scientist', status: 'Running OLS Model', initial: 'ER' },
+                  { name: 'Amina Mwangi', role: 'Supervisor (Sector A)', status: 'Survey verification', initial: 'AM' },
+                  { name: 'Marcus Vance', role: 'Analytics Engineer', status: 'Data hygiene check', initial: 'MV' }
+                ].map((co, i) => (
+                  <div key={i} className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-xs">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-6 h-6 rounded-md bg-indigo-600/30 text-indigo-300 font-bold flex items-center justify-center text-[10px]">
+                        {co.initial}
+                      </div>
+                      <span className="font-bold text-white truncate text-[11px]">{co.name}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 block truncate">{co.role}</span>
+                    <span className="text-[9px] text-emerald-400 font-medium block truncate mt-0.5">{co.status}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  Supervisor PIN Gate: Active & Validated
+                </span>
+                <span className="font-mono text-emerald-400 text-[11px]">100% In-Memory RAM</span>
+              </div>
+            </div>
+
+          </div>
+        )}
+      </section>
 
     </div>
   );

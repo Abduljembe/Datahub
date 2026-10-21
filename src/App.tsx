@@ -526,7 +526,32 @@ export default function App() {
                 onUpdateDataset={handleUpdateDataset}
                 onDeleteDataset={handleDeleteDataset}
                 onAppendRowsToActive={handleAddRowsToDataset}
-                onNavigateTab={(tab) => setActiveTab(tab)}
+                onNavigateTab={(tab) => {
+                  const sectionMap: Record<string, string> = {
+                    'upload': 'section-ingest',
+                    'grid': 'section-grid',
+                    'analysis': 'section-analytics',
+                    'simulation': 'section-forecast',
+                    'collection': 'section-surveys',
+                    'report': 'section-reports',
+                    'reports': 'section-reports',
+                    'team': 'section-reports',
+                    'operations': 'section-reports',
+                    'supervisor': 'section-reports',
+                    'admin': 'section-reports',
+                  };
+                  const target = sectionMap[tab];
+                  if (target) {
+                    const el = document.getElementById(target);
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      el.classList.add('ring-2', 'ring-indigo-500');
+                      setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-500'), 2000);
+                      return;
+                    }
+                  }
+                  setActiveTab(tab);
+                }}
                 onOpenDatasetModal={(tab) => {
                   setDatasetModalInitialTab(tab || 'list');
                   setIsDatasetModalOpen(true);

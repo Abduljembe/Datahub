@@ -48,6 +48,9 @@ import { DesktopExeModal } from './components/desktop/DesktopExeModal';
 import { UnifiedDashboard } from './components/dashboard/UnifiedDashboard';
 import { MobileDashboardOverview } from './components/mobile/MobileDashboardOverview';
 import { MobileAllToolsSheet } from './components/mobile/MobileAllToolsSheet';
+import { Sidebar } from './components/Sidebar';
+import { CommandHeader } from './components/CommandHeader';
+import { AnalystWorkbench } from './components/dashboard/AnalystWorkbench';
 import { Presentation, QrCode } from 'lucide-react';
 
 export default function App() {
@@ -84,9 +87,23 @@ export default function App() {
   const [isCommsHubOpen, setIsCommsHubOpen] = useState<boolean>(false);
   const [isDesktopExeOpen, setIsDesktopExeOpen] = useState<boolean>(false);
   const [isMobileAllToolsOpen, setIsMobileAllToolsOpen] = useState<boolean>(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   
-  // Top-level Navigation & View Mode ('landing' | 'app')
-  const [viewMode, setViewMode] = useState<'landing' | 'app'>('landing');
+  // Top-level Navigation & View Mode ('landing' | 'app') - Defaults directly to the All-in-One Workstation
+  const [viewMode, setViewMode] = useState<'landing' | 'app'>(() => {
+    try {
+      const saved = localStorage.getItem('datahub_view_mode');
+      if (saved === 'landing' || saved === 'app') return saved;
+    } catch {}
+    return 'app';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('datahub_view_mode', viewMode);
+    } catch {}
+  }, [viewMode]);
 
   // Coworker Invitation URL Token Handling (?invite_token=...)
   const [urlInviteToken, setUrlInviteToken] = useState<string | null>(null);
@@ -135,10 +152,16 @@ export default function App() {
   const [user, setUser] = useState<UserProfile | null>(() => {
     try {
       const saved = localStorage.getItem('datahub_auth_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      id: 'usr_lead_analyst',
+      name: 'Abdul Jembe',
+      email: 'abduljembe@gmail.com',
+      role: 'Lead Data Scientist',
+      avatarUrl: '',
+      createdAt: new Date().toISOString()
+    };
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signin');
@@ -281,415 +304,222 @@ export default function App() {
           onLogout={handleLogout}
         />
       ) : (
-        /* APP WORKSPACE DASHBOARD VIEW (AUTHENTICATED ACCESS ONLY) */
         <>
-          {/* Global Top Navbar */}
-          <Navbar
+          {/* PROFESSIONAL ENTERPRISE APP WORKSPACE */}
+          <div className="min-h-screen flex w-full relative">
+          {/* Collapsible Left Rail Sidebar */}
+          <Sidebar
+            activeTab={activeTab}
+            onSelectTab={(tab) => {
+              setActiveTab(tab);
+              setIsMobileSidebarOpen(false);
+            }}
             datasets={datasets}
             activeDataset={activeDataset}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
             onSelectDataset={handleSelectDataset}
-            onOpenDatasetModal={() => setIsDatasetModalOpen(true)}
-            onOpenNewDatasetModal={() => setIsDatasetModalOpen(true)}
-            onOpenUploadStudio={() => setActiveTab('upload')}
-            onOpenShareModal={() => handleOpenShare(activeDataset)}
-            onOpenCommsHub={() => setIsCommsHubOpen(true)}
-            onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
-            onOpenAllTools={() => setIsMobileAllToolsOpen(true)}
-            user={user}
+            onOpenNewDataset={() => {
+              setDatasetModalInitialTab('create');
+              setIsDatasetModalOpen(true);
+            }}
+            currentUser={user}
             onOpenAuth={handleOpenAuth}
             onLogout={handleLogout}
-            onNavigateToLanding={() => setViewMode('landing')}
-            onOpenTour={() => setIsTourOpen(true)}
             onOpenCopilot={() => setIsCopilotOpen(true)}
+            onOpenTour={() => setIsTourOpen(true)}
+            onOpenSlideDeck={() => setIsSlideDeckOpen(true)}
+            onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
+            isOpenMobile={isMobileSidebarOpen}
+            onCloseMobile={() => setIsMobileSidebarOpen(false)}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           />
 
-          {/* Sub-header Context Banner */}
-          <header className={`border-b transition-colors px-3 sm:px-6 lg:px-8 py-3 backdrop-blur-md ${
-            isDark ? 'border-slate-800/80 bg-slate-900/40 text-slate-100' : 'border-slate-200 bg-white/80 text-slate-900 shadow-xs'
+          {/* Main Content Workspace Column */}
+          <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${
+            isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'
           }`}>
-            <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-xl border flex items-center justify-center font-bold shrink-0 ${
-                  isDark ? 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-600'
-                }`}>
-                  <Database className="w-4.5 h-4.5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <h1 className={`text-sm font-bold tracking-tight truncate max-w-[220px] sm:max-w-md ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      {activeDataset?.name || 'No Dataset Selected'}
-                    </h1>
-                    {activeDataset && (
-                      <>
-                        <span className={`text-[9px] uppercase font-mono px-2 py-0.5 rounded-full border ${
-                          isDark ? 'bg-slate-800 text-slate-300 border-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}>
-                          {activeDataset.sourceType || 'dataset'}
-                        </span>
-                        {activeDataset.sourceType !== 'form' && activeDataset.sourceType !== 'synthetic' && activeDataset.sourceType !== 'iot' && (
-                          <span className={`text-[9px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border hidden xs:inline-block ${
-                            isDark ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                          }`}>
-                            Custom Data
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <p className={`text-xs line-clamp-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {activeDataset?.description || 'Upload, import, or collect real data to begin analysis.'}
-                  </p>
-                </div>
-              </div>
+            {/* Professional Command Header with Breadcrumbs, Dataset Telemetry, & Actions */}
+            <CommandHeader
+              activeTab={activeTab}
+              activeDataset={activeDataset}
+              onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+              onOpenCopilot={() => setIsCopilotOpen(true)}
+              onOpenSnapshots={() => {
+                setDatasetModalInitialTab('versions');
+                setIsDatasetModalOpen(true);
+              }}
+              onOpenShare={() => handleOpenShare(activeDataset)}
+              onOpenSlideDeck={() => setIsSlideDeckOpen(true)}
+              onOpenQrSurvey={() => setIsQrSurveyOpen(true)}
+              onOpenTour={() => setIsTourOpen(true)}
+              onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              currentUser={user}
+            />
 
-              {/* Quick Metrics Badge, Co-worker Share & Direct Ingestion Action */}
-              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-between lg:justify-end">
-                
-                <div className="flex items-center gap-1.5">
-                  {/* AI Copilot Summon Button */}
-                  {activeDataset && (
-                    <button
-                      onClick={() => setIsCopilotOpen(true)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-md ${
-                        isDark
-                          ? 'bg-gradient-to-r from-purple-900/50 to-indigo-900/50 hover:from-purple-800/70 hover:to-indigo-800/70 border-purple-500/40 text-purple-200 hover:text-white shadow-purple-950/40'
-                          : 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700'
-                      }`}
-                      title="Ask natural language questions to filter rows, build columns, and analyze data"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-                      <span>AI Copilot</span>
-                    </button>
-                  )}
+            {/* Focused Workspace View (Clean, Dedicated Studio Per Feature) */}
+            <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto">
+              {/* TAB 0: EXECUTIVE OVERVIEW DASHBOARD */}
+              {activeTab === 'dashboard' && (
+                <UnifiedDashboard
+                  dataset={activeDataset}
+                  datasets={datasets}
+                  onSelectDataset={handleSelectDataset}
+                  onCreateDataset={handleCreateDataset}
+                  onUpdateDataset={handleUpdateDataset}
+                  onDeleteDataset={handleDeleteDataset}
+                  onAppendRowsToActive={handleAddRowsToDataset}
+                  onNavigateTab={(tab) => setActiveTab(tab)}
+                  onOpenDatasetModal={(tab) => {
+                    setDatasetModalInitialTab(tab || 'list');
+                    setIsDatasetModalOpen(true);
+                  }}
+                  onOpenShareModal={() => handleOpenShare(activeDataset)}
+                  onOpenCopilot={() => setIsCopilotOpen(true)}
+                  onOpenSlideDeck={() => setIsSlideDeckOpen(true)}
+                  onOpenQrSurvey={() => setIsQrSurveyOpen(true)}
+                  onOpenTour={() => setIsTourOpen(true)}
+                  onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
+                  onOpenCommsHub={() => setIsCommsHubOpen(true)}
+                  currentUser={user}
+                />
+              )}
 
-                  {/* Snapshot & Versions Button */}
-                  {activeDataset && (
-                    <button
-                      onClick={() => {
-                        setDatasetModalInitialTab('versions');
-                        setIsDatasetModalOpen(true);
-                      }}
-                      className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs ${
-                        isDark
-                          ? 'bg-cyan-950/60 hover:bg-cyan-900/80 border-cyan-500/40 text-cyan-300 hover:text-white'
-                          : 'bg-cyan-50 hover:bg-cyan-100 border-cyan-200 text-cyan-700'
-                      }`}
-                      title="Capture snapshots, compare historical versions, and revert dataset changes"
-                    >
-                      <History className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="hidden sm:inline">Snapshots</span>
-                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-cyan-500/20 text-cyan-300 font-mono font-bold">
-                        {getDatasetVersions(activeDataset).length}
-                      </span>
-                    </button>
-                  )}
+              {/* TAB: ANALYST WORKBENCH */}
+              {activeTab === 'analyst' && (
+                <AnalystWorkbench
+                  dataset={activeDataset}
+                  onUpdateDataset={handleUpdateDataset}
+                  onNavigateTab={(tab) => setActiveTab(tab)}
+                  onOpenCopilot={() => setIsCopilotOpen(true)}
+                />
+              )}
 
-                  {/* Share with Co-workers Button */}
-                  {activeDataset && (
-                    <button
-                      onClick={() => handleOpenShare(activeDataset)}
-                      className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs ${
-                        isDark 
-                          ? 'bg-gradient-to-r from-indigo-600/20 to-cyan-600/20 hover:from-indigo-600/30 hover:to-cyan-600/30 border-indigo-500/40 text-indigo-300 hover:text-white'
-                          : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700'
-                      }`}
-                      title="Share active dataset with co-workers and set permissions"
-                    >
-                      <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="hidden sm:inline">Share</span>
-                    </button>
-                  )}
+              {/* TAB 1: UPLOAD & DATA CLEANING STUDIO */}
+              {activeTab === 'upload' && (
+                <UploadCleanStudio
+                  datasets={datasets}
+                  activeDataset={activeDataset}
+                  onSelectDataset={handleSelectDataset}
+                  onCreateDataset={handleCreateDataset}
+                  onUpdateDataset={handleUpdateDataset}
+                  onDeleteDataset={handleDeleteDataset}
+                  onNavigateToAnalysis={() => setActiveTab('analysis')}
+                  onNavigateToGrid={() => setActiveTab('grid')}
+                  onShareDataset={handleOpenShare}
+                />
+              )}
 
-                  <button
-                    onClick={() => setActiveTab('upload')}
-                    className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs ${
-                      isDark
-                        ? 'bg-indigo-600/20 hover:bg-indigo-600/30 border-indigo-500/40 text-indigo-300 hover:text-white'
-                        : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-800'
-                    }`}
-                    title="Upload your own custom dataset file (CSV, Excel, JSON)"
-                  >
-                    <UploadCloud className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Upload</span>
-                  </button>
+              {/* TAB 2: DATA ANALYSIS SUITE */}
+              {activeTab === 'analysis' && (
+                <AnalysisHub
+                  dataset={activeDataset}
+                  availableDatasets={datasets}
+                  onUpdateDataset={handleUpdateDataset}
+                  onCreateDataset={handleCreateDataset}
+                  onOpenUploadStudio={() => setActiveTab('upload')}
+                  onOpenDatasetModal={(tab) => {
+                    setDatasetModalInitialTab(tab || 'list');
+                    setIsDatasetModalOpen(true);
+                  }}
+                />
+              )}
 
-                  {/* Executive Slide Deck Button */}
-                  {activeDataset && (
-                    <button
-                      onClick={() => setIsSlideDeckOpen(true)}
-                      className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs ${
-                        isDark
-                          ? 'bg-amber-950/40 hover:bg-amber-900/60 border-amber-500/40 text-amber-300 hover:text-white'
-                          : 'bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-700'
-                      }`}
-                      title="Generate executive presentation slide deck from active research data"
-                    >
-                      <Presentation className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="hidden sm:inline">Slide Deck</span>
-                    </button>
-                  )}
+              {/* TAB 3: DATA COLLECTION HUB */}
+              {activeTab === 'collection' && (
+                <CollectionHub
+                  activeDataset={activeDataset}
+                  onAppendRowsToActive={handleAddRowsToDataset}
+                  onCreateDataset={handleCreateDataset}
+                  onUpdateDataset={handleUpdateDataset}
+                />
+              )}
 
-                  {/* Public QR Survey Button */}
-                  {activeDataset && (
-                    <button
-                      onClick={() => setIsQrSurveyOpen(true)}
-                      className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs ${
-                        isDark
-                          ? 'bg-purple-950/40 hover:bg-purple-900/60 border-purple-500/40 text-purple-300 hover:text-white'
-                          : 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700'
-                      }`}
-                      title="Create public QR codes and live web survey links"
-                    >
-                      <QrCode className="w-3.5 h-3.5 text-purple-400" />
-                      <span className="hidden sm:inline">QR Survey</span>
-                    </button>
-                  )}
+              {/* TAB 4: GRID EDITOR */}
+              {activeTab === 'grid' && (
+                <GridEditor
+                  dataset={activeDataset}
+                  onUpdateDataset={handleUpdateDataset}
+                  onNavigateToAnalysis={() => setActiveTab('analysis')}
+                  onNavigateToSimulation={() => setActiveTab('simulation')}
+                  onOpenDatasetModal={(tab) => {
+                    setDatasetModalInitialTab(tab || 'list');
+                    setIsDatasetModalOpen(true);
+                  }}
+                />
+              )}
 
-                  {/* Quick Tour Guide Button */}
-                  <button
-                    onClick={() => setIsTourOpen(true)}
-                    className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs ${
-                      isDark
-                        ? 'bg-slate-900/90 hover:bg-slate-800 border-slate-700/80 text-cyan-300 hover:text-cyan-200'
-                        : 'bg-white hover:bg-slate-50 border-slate-200 text-cyan-700 hover:text-cyan-800 shadow-xs'
-                    }`}
-                    title="Interactive Getting Started Tour & Navigation Guide"
-                  >
-                    <Compass className="w-3.5 h-3.5 text-cyan-400" />
-                    <span className="hidden sm:inline">Tour</span>
-                  </button>
-                </div>
+              {/* TAB 5: WHAT-IF SCENARIO MODELING & PREDICTIVE FORECASTING */}
+              {activeTab === 'simulation' && (
+                <ScenarioSimulator
+                  dataset={activeDataset}
+                  currentUser={user}
+                  onNavigateToTab={(tab) => setActiveTab(tab)}
+                  onOpenShareModal={handleOpenShare}
+                />
+              )}
 
-                {activeDataset ? (
-                  <div className={`flex items-center gap-2.5 sm:gap-3.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-mono shrink-0 ${
-                    isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'
-                  }`}>
-                    <div>
-                      <span className={`text-[9px] block leading-tight ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>ROWS</span>
-                      <span className={`font-bold text-xs ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>{activeDataset.data.length.toLocaleString()}</span>
-                    </div>
-                    <div className={`w-px h-5 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
-                    <div>
-                      <span className={`text-[9px] block leading-tight ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>COLS</span>
-                      <span className={`font-bold text-xs ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{activeDataset.columns.length}</span>
-                    </div>
-                    <div className={`w-px h-5 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} />
-                    <div>
-                      <span className={`text-[9px] block leading-tight ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>STATUS</span>
-                      <span className="font-semibold text-[11px] text-emerald-500 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        Active
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs ${
-                    isDark ? 'bg-slate-950/60 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-600'
-                  }`}>
-                    <span>No active dataset</span>
-                  </div>
-                )}
+              {/* TAB 6: EXECUTIVE REPORT */}
+              {activeTab === 'report' && (
+                <ReportExporter
+                  dataset={activeDataset}
+                />
+              )}
 
-                {activeDataset && (
-                  <div className="hidden sm:flex items-center gap-1.5">
-                    <button
-                      onClick={() => exportToCSV(activeDataset)}
-                      className={`p-2 rounded-xl border transition-colors ${
-                        isDark 
-                          ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300 hover:text-white' 
-                          : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-xs'
-                      }`}
-                      title="Export as CSV"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
+              {/* TAB 7: CO-WORKER & TEAM COLLABORATION HUB */}
+              {activeTab === 'team' && (
+                <TeamHub
+                  activeDataset={activeDataset}
+                  datasets={datasets}
+                  currentUser={user}
+                  onSelectDataset={handleSelectDataset}
+                  onCreateDataset={handleCreateDataset}
+                  onOpenShareModal={handleOpenShare}
+                  onOpenUploadStudio={() => setActiveTab('upload')}
+                  onNavigateToTab={(tab) => setActiveTab(tab)}
+                />
+              )}
 
-            </div>
-          </header>
+              {/* TAB 8: SUPERVISOR & ADMIN OPERATIONS CENTER */}
+              {activeTab === 'supervisor' && (
+                <SupervisorOperationsCenter
+                  activeDataset={activeDataset}
+                  datasets={datasets}
+                  onAppendRowsToActive={handleAddRowsToDataset}
+                  onCreateDataset={handleCreateDataset}
+                  onNavigateToAnalysis={() => setActiveTab('analysis')}
+                  onNavigateToGrid={() => setActiveTab('grid')}
+                />
+              )}
 
-          {/* Main App Body */}
-          <main className="flex-1 max-w-7xl w-full mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:p-8 pb-24 sm:pb-28 md:pb-8">
-            
-            {/* TAB 0: ALL-IN-ONE UNIFIED DASHBOARD (ALL FEATURES AT ONE PLACE) */}
-            {activeTab === 'dashboard' && (
-              <UnifiedDashboard
-                dataset={activeDataset}
-                datasets={datasets}
-                onSelectDataset={handleSelectDataset}
-                onCreateDataset={handleCreateDataset}
-                onUpdateDataset={handleUpdateDataset}
-                onDeleteDataset={handleDeleteDataset}
-                onAppendRowsToActive={handleAddRowsToDataset}
-                onNavigateTab={(tab) => {
-                  const sectionMap: Record<string, string> = {
-                    'upload': 'section-ingest',
-                    'grid': 'section-grid',
-                    'analysis': 'section-analytics',
-                    'simulation': 'section-forecast',
-                    'collection': 'section-surveys',
-                    'report': 'section-reports',
-                    'reports': 'section-reports',
-                    'team': 'section-reports',
-                    'operations': 'section-reports',
-                    'supervisor': 'section-reports',
-                    'admin': 'section-reports',
-                  };
-                  const target = sectionMap[tab];
-                  if (target) {
-                    const el = document.getElementById(target);
-                    if (el) {
-                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      el.classList.add('ring-2', 'ring-indigo-500');
-                      setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-500'), 2000);
-                      return;
-                    }
-                  }
-                  setActiveTab(tab);
-                }}
-                onOpenDatasetModal={(tab) => {
-                  setDatasetModalInitialTab(tab || 'list');
-                  setIsDatasetModalOpen(true);
-                }}
-                onOpenShareModal={() => handleOpenShare(activeDataset)}
-                onOpenCopilot={() => setIsCopilotOpen(true)}
-                onOpenSlideDeck={() => setIsSlideDeckOpen(true)}
-                onOpenQrSurvey={() => setIsQrSurveyOpen(true)}
-                onOpenTour={() => setIsTourOpen(true)}
-                onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
-                onOpenCommsHub={() => setIsCommsHubOpen(true)}
-                currentUser={user}
-              />
-            )}
+              {/* TAB 9: ADMIN OBSERVABILITY COMMAND CENTER */}
+              {activeTab === 'admin' && (
+                <AdminConsole
+                  activeDataset={activeDataset}
+                  datasets={datasets}
+                  currentUser={user}
+                  onNavigateTab={(tab) => setActiveTab(tab)}
+                  onAppendRowsToActive={handleAddRowsToDataset}
+                  onCreateDataset={handleCreateDataset}
+                />
+              )}
 
-            {/* TAB 1: UPLOAD & DATA CLEANING STUDIO */}
-            {activeTab === 'upload' && (
-              <UploadCleanStudio
-                datasets={datasets}
-                activeDataset={activeDataset}
-                onSelectDataset={handleSelectDataset}
-                onCreateDataset={handleCreateDataset}
-                onUpdateDataset={handleUpdateDataset}
-                onDeleteDataset={handleDeleteDataset}
-                onNavigateToAnalysis={() => setActiveTab('analysis')}
-                onNavigateToGrid={() => setActiveTab('grid')}
-                onShareDataset={handleOpenShare}
-              />
-            )}
+              {/* TAB 10: UNIFIED OPERATIONS, COMMS & ALL-IN-ONE HUB */}
+              {activeTab === 'operations' && (
+                <UnifiedOperationsCommsHub
+                  isOpen={true}
+                  mode="embedded"
+                  datasets={datasets}
+                  activeDataset={activeDataset}
+                  currentUser={user}
+                  onNavigateTab={(tab) => setActiveTab(tab)}
+                  onAppendRowsToActive={handleAddRowsToDataset}
+                />
+              )}
 
-            {/* TAB 2: DATA ANALYSIS SUITE */}
-            {activeTab === 'analysis' && (
-              <AnalysisHub
-                dataset={activeDataset}
-                availableDatasets={datasets}
-                onUpdateDataset={handleUpdateDataset}
-                onCreateDataset={handleCreateDataset}
-                onOpenUploadStudio={() => setActiveTab('upload')}
-                onOpenDatasetModal={(tab) => {
-                  setDatasetModalInitialTab(tab || 'list');
-                  setIsDatasetModalOpen(true);
-                }}
-              />
-            )}
-
-            {/* TAB 3: DATA COLLECTION HUB */}
-            {activeTab === 'collection' && (
-              <CollectionHub
-                activeDataset={activeDataset}
-                onAppendRowsToActive={handleAddRowsToDataset}
-                onCreateDataset={handleCreateDataset}
-                onUpdateDataset={handleUpdateDataset}
-              />
-            )}
-
-            {/* TAB 4: GRID EDITOR */}
-            {activeTab === 'grid' && (
-              <GridEditor
-                dataset={activeDataset}
-                onUpdateDataset={handleUpdateDataset}
-                onNavigateToAnalysis={() => setActiveTab('analysis')}
-                onNavigateToSimulation={() => setActiveTab('simulation')}
-                onOpenDatasetModal={(tab) => {
-                  setDatasetModalInitialTab(tab || 'list');
-                  setIsDatasetModalOpen(true);
-                }}
-              />
-            )}
-
-            {/* TAB 5: WHAT-IF SCENARIO MODELING & PREDICTIVE FORECASTING */}
-            {activeTab === 'simulation' && (
-              <ScenarioSimulator
-                dataset={activeDataset}
-                currentUser={user}
-                onNavigateToTab={(tab) => setActiveTab(tab)}
-                onOpenShareModal={handleOpenShare}
-              />
-            )}
-
-            {/* TAB 6: EXECUTIVE REPORT */}
-            {activeTab === 'report' && (
-              <ReportExporter
-                dataset={activeDataset}
-              />
-            )}
-
-            {/* TAB 7: CO-WORKER & TEAM COLLABORATION HUB */}
-            {activeTab === 'team' && (
-              <TeamHub
-                activeDataset={activeDataset}
-                datasets={datasets}
-                currentUser={user}
-                onSelectDataset={handleSelectDataset}
-                onCreateDataset={handleCreateDataset}
-                onOpenShareModal={handleOpenShare}
-                onOpenUploadStudio={() => setActiveTab('upload')}
-                onNavigateToTab={(tab) => setActiveTab(tab)}
-              />
-            )}
-
-            {/* TAB 8: SUPERVISOR & ADMIN OPERATIONS CENTER */}
-            {activeTab === 'supervisor' && (
-              <SupervisorOperationsCenter
-                activeDataset={activeDataset}
-                datasets={datasets}
-                onAppendRowsToActive={handleAddRowsToDataset}
-                onCreateDataset={handleCreateDataset}
-                onNavigateToAnalysis={() => setActiveTab('analysis')}
-                onNavigateToGrid={() => setActiveTab('grid')}
-              />
-            )}
-
-            {/* TAB 9: ADMIN OBSERVABILITY COMMAND CENTER */}
-            {activeTab === 'admin' && (
-              <AdminConsole
-                activeDataset={activeDataset}
-                datasets={datasets}
-                currentUser={user}
-                onNavigateToTab={(tab) => setActiveTab(tab)}
-                onAppendRowsToActive={handleAddRowsToDataset}
-                onCreateDataset={handleCreateDataset}
-              />
-            )}
-
-            {/* TAB 10: UNIFIED OPERATIONS, COMMS & ALL-IN-ONE HUB */}
-            {activeTab === 'operations' && (
-              <UnifiedOperationsCommsHub
-                isOpen={true}
-                mode="embedded"
-                datasets={datasets}
-                activeDataset={activeDataset}
-                currentUser={user}
-                onNavigateToTab={(tab) => setActiveTab(tab)}
-                onAppendRowsToActive={handleAddRowsToDataset}
-              />
-            )}
-
-          </main>
+            </main>
+          </div>
+        </div>
 
           {/* Modal: Dataset Switcher / Manager / Snapshots */}
           <DatasetModal

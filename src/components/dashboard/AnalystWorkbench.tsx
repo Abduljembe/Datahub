@@ -64,7 +64,7 @@ export const AnalystWorkbench: React.FC<AnalystWorkbenchProps> = ({
   }, [dataset]);
 
   // Set default transform column
-  useMemo(() => {
+  React.useEffect(() => {
     if (numericCols.length > 0 && !transformCol) {
       setTransformCol(numericCols[0].name);
     }

@@ -4,6 +4,7 @@ export type AggregationType = 'sum' | 'mean' | 'count' | 'min' | 'max';
 
 export type AppTab = 
   | 'dashboard'
+  | 'analyst'
   | 'upload' 
   | 'collection' 
   | 'analysis' 

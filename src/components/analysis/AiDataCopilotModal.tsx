@@ -18,8 +18,19 @@ import {
   SlidersHorizontal,
   Download,
   Trash2,
-  Table
+  Table,
+  BarChart3,
+  Pin
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid
+} from 'recharts';
 import confetti from 'canvas-confetti';
 import { Dataset, ColumnMeta, DatasetVersion } from '../../types';
 import { 
@@ -28,7 +39,8 @@ import {
   DataCopilotResponse, 
   DataCopilotFilter, 
   DataCopilotComputedColumn, 
-  DataCopilotCleaningAction 
+  DataCopilotCleaningAction,
+  DataCopilotChart
 } from '../../services/geminiService';
 import { createDatasetSnapshot } from '../../utils/versionEngine';
 
@@ -49,6 +61,7 @@ interface CopilotMessage {
   suggestedFilter?: DataCopilotFilter | null;
   suggestedComputedColumn?: DataCopilotComputedColumn | null;
   suggestedCleaningAction?: DataCopilotCleaningAction | null;
+  suggestedChart?: DataCopilotChart | null;
   suggestedSql?: string;
   followUpQuestions?: string[];
   isAiGenerated?: boolean;
@@ -150,6 +163,7 @@ export const AiDataCopilotModal: React.FC<AiDataCopilotModalProps> = ({
         suggestedFilter: res.suggestedFilter,
         suggestedComputedColumn: res.suggestedComputedColumn,
         suggestedCleaningAction: res.suggestedCleaningAction,
+        suggestedChart: res.suggestedChart,
         suggestedSql: res.suggestedSql,
         followUpQuestions: res.followUpQuestions?.map(cleanCopilotText),
         isAiGenerated: res.isAiGenerated,
@@ -579,6 +593,85 @@ export const AiDataCopilotModal: React.FC<AiDataCopilotModalProps> = ({
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+
+                  {/* Interactive Action 0: Natural Language Live Chart Widget */}
+                  {msg.suggestedChart && msg.suggestedChart.data && msg.suggestedChart.data.length > 0 && (
+                    <div className="p-3.5 rounded-xl border border-cyan-500/40 bg-gradient-to-b from-cyan-950/40 to-slate-950/60 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center">
+                            <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-cyan-200">{msg.suggestedChart.title}</div>
+                            <div className="text-[10px] text-slate-400">
+                              {msg.suggestedChart.data.length} categories • Auto-generated visualization
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          {msg.suggestedChart.type} chart
+                        </span>
+                      </div>
+
+                      {/* Mini Recharts Bar Chart */}
+                      <div className="h-44 w-full pt-1">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={msg.suggestedChart.data} margin={{ top: 8, right: 10, left: -20, bottom: 20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
+                            <XAxis
+                              dataKey="name"
+                              stroke="#94a3b8"
+                              fontSize={10}
+                              tickLine={false}
+                              angle={-20}
+                              textAnchor="end"
+                              height={35}
+                            />
+                            <YAxis
+                              stroke="#94a3b8"
+                              fontSize={10}
+                              tickLine={false}
+                              axisLine={false}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: '#0f172a',
+                                border: '1px solid #06b6d4',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                color: '#f8fafc'
+                              }}
+                            />
+                            <Bar
+                              dataKey="value"
+                              fill="#06b6d4"
+                              radius={[4, 4, 0, 0]}
+                            />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+                        <span className="text-[10px] text-slate-400">
+                          X: <span className="text-slate-300 font-mono">{msg.suggestedChart.xKey}</span> | Y: <span className="text-slate-300 font-mono">{msg.suggestedChart.yKey}</span>
+                        </span>
+                        {onNavigateTab && (
+                          <button
+                            onClick={() => {
+                              onNavigateTab('charts');
+                              onClose();
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-[11px] font-semibold border border-cyan-500/30 flex items-center gap-1 transition-all"
+                          >
+                            <BarChart3 className="w-3 h-3" />
+                            <span>Open in Chart Studio</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
 

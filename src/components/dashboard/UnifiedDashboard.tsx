@@ -27,7 +27,9 @@ import {
   Clock,
   Zap,
   Lock,
-  Cpu
+  Cpu,
+  Wand2,
+  Play
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -61,6 +63,8 @@ interface UnifiedDashboardProps {
   onOpenDesktopExe: () => void;
   onOpenCommsHub?: () => void;
   currentUser: UserProfile | null;
+  onOpenAutoHeal?: () => void;
+  onOpenFieldTour?: () => void;
 }
 
 export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
@@ -73,7 +77,9 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
   onOpenCopilot,
   onOpenSlideDeck,
   onOpenQrSurvey,
-  currentUser
+  currentUser,
+  onOpenAutoHeal,
+  onOpenFieldTour
 }) => {
   const { isDark } = useTheme();
 
@@ -264,6 +270,28 @@ export const UnifiedDashboard: React.FC<UnifiedDashboardProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {onOpenFieldTour && (
+              <button
+                onClick={onOpenFieldTour}
+                className="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                title="Watch 60-second end-to-end field data to boardroom deck demo"
+              >
+                <Play className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                <span>60s Live Demo</span>
+              </button>
+            )}
+
+            {onOpenAutoHeal && dataset && (
+              <button
+                onClick={onOpenAutoHeal}
+                className="px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                title="1-Click Auto-Heal & Standardize dirty formats, currencies, and nulls"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Auto-Heal</span>
+              </button>
+            )}
+
             <button
               onClick={onOpenCopilot}
               className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 hover:opacity-90 text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-purple-600/25 transition-all"

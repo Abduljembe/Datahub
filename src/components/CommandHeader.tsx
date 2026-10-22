@@ -13,7 +13,15 @@ import {
   Database,
   UploadCloud,
   FileSpreadsheet,
-  Code
+  Code,
+  Wand2,
+  Play,
+  ChevronDown,
+  ShieldCheck,
+  Smartphone,
+  Building2,
+  LineChart,
+  Check
 } from 'lucide-react';
 import { AppTab, Dataset, UserProfile } from '../types';
 import { useTheme } from '../context/ThemeContext';
@@ -33,6 +41,9 @@ interface CommandHeaderProps {
   onOpenDesktopExe: () => void;
   onNavigateTab: (tab: AppTab) => void;
   currentUser: UserProfile | null;
+  onOpenAutoHeal?: () => void;
+  onOpenFieldTour?: () => void;
+  onSelectPersonaRole?: (role: UserProfile['role'], tabToSwitch?: AppTab) => void;
 }
 
 export const CommandHeader: React.FC<CommandHeaderProps> = ({
@@ -46,10 +57,15 @@ export const CommandHeader: React.FC<CommandHeaderProps> = ({
   onOpenQrSurvey,
   onOpenTour,
   onOpenDesktopExe,
-  onNavigateTab
+  onNavigateTab,
+  currentUser,
+  onOpenAutoHeal,
+  onOpenFieldTour,
+  onSelectPersonaRole
 }) => {
   const { isDark } = useTheme();
   const [exportOpen, setExportOpen] = useState(false);
+  const [personaOpen, setPersonaOpen] = useState(false);
 
   // Tab Breadcrumb Labels
   const tabMetadata: Record<AppTab, { domain: string; title: string }> = {
@@ -70,12 +86,22 @@ export const CommandHeader: React.FC<CommandHeaderProps> = ({
   const meta = tabMetadata[activeTab] || { domain: 'Workspace', title: 'Data Studio' };
   const snapshotCount = activeDataset ? getDatasetVersions(activeDataset).length : 0;
 
+  // Personas for instant switching
+  const PERSONAS: { role: UserProfile['role']; label: string; tab: AppTab; icon: any; color: string }[] = [
+    { role: 'Workspace Owner', label: 'Central Admin', tab: 'admin', icon: Building2, color: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
+    { role: 'Lead Field Supervisor', label: 'Lead Supervisor', tab: 'operations', icon: ShieldCheck, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
+    { role: 'Field Enumerator', label: 'Field Enumerator', tab: 'collection', icon: Smartphone, color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' },
+    { role: 'Data Analyst', label: 'Data Analyst', tab: 'analyst', icon: LineChart, color: 'text-purple-400 bg-purple-500/10 border-purple-500/30' },
+  ];
+
+  const currentPersona = PERSONAS.find(p => p.role === currentUser?.role) || PERSONAS[0];
+
   return (
-    <header className={`h-16 border-b sticky top-0 z-30 transition-colors backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-3 ${
+    <header className={`h-16 border-b sticky top-0 z-30 transition-colors backdrop-blur-md px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-3 ${
       isDark ? 'bg-slate-950/80 border-slate-800/80 text-white' : 'bg-white/90 border-slate-200 text-slate-900 shadow-xs'
     }`}>
       {/* Left: Mobile Sidebar Trigger + Breadcrumbs */}
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <button
           onClick={onOpenMobileSidebar}
           className="lg:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
@@ -95,7 +121,7 @@ export const CommandHeader: React.FC<CommandHeaderProps> = ({
             <div className="hidden md:flex items-center gap-2 ml-3 pl-3 border-l border-slate-800">
               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300">
                 <Database className="w-3 h-3 text-cyan-400" />
-                <span className="font-bold text-white truncate max-w-[140px]">{activeDataset.name}</span>
+                <span className="font-bold text-white truncate max-w-[130px]">{activeDataset.name}</span>
                 <span className="text-slate-500">·</span>
                 <span className="text-emerald-400">{activeDataset.data.length.toLocaleString()} rows</span>
               </div>
@@ -104,8 +130,88 @@ export const CommandHeader: React.FC<CommandHeaderProps> = ({
         </div>
       </div>
 
-      {/* Right: Quick Action Buttons */}
-      <div className="flex items-center gap-2 shrink-0">
+      {/* Center/Right: Role Persona Switcher + Quick Action Buttons */}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* Role Persona Switcher Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setPersonaOpen(!personaOpen)}
+            className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+              isDark ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+            }`}
+            title="Switch operational role persona"
+          >
+            <currentPersona.icon className={`w-3.5 h-3.5 ${currentPersona.color.split(' ')[0]}`} />
+            <span className="hidden sm:inline">{currentPersona.label}</span>
+            <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
+          </button>
+
+          {personaOpen && (
+            <div
+              className="absolute right-0 mt-2 w-56 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-1.5 z-50 animate-in fade-in"
+              onMouseLeave={() => setPersonaOpen(false)}
+            >
+              <div className="px-3 py-1.5 text-[10px] font-mono uppercase font-bold text-slate-400 border-b border-slate-800/80 mb-1">
+                Switch Operational Persona
+              </div>
+              {PERSONAS.map(p => {
+                const isSelected = p.role === currentUser?.role;
+                return (
+                  <button
+                    key={p.role}
+                    onClick={() => {
+                      if (onSelectPersonaRole) {
+                        onSelectPersonaRole(p.role, p.tab);
+                      } else {
+                        onNavigateTab(p.tab);
+                      }
+                      setPersonaOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                      isSelected
+                        ? 'bg-purple-600/20 text-white font-bold'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <p.icon className={`w-4 h-4 ${p.color.split(' ')[0]}`} />
+                      <div>
+                        <div>{p.label}</div>
+                        <div className="text-[10px] text-slate-400 font-normal">Jump to {p.tab} view</div>
+                      </div>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 60s Field-to-Boardroom Interactive Demo Button */}
+        {onOpenFieldTour && (
+          <button
+            onClick={onOpenFieldTour}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 text-xs font-bold transition-all shadow-sm"
+            title="Experience the full 4-stage Field-to-Boardroom pipeline in 60 seconds"
+          >
+            <Play className="w-3 h-3 text-amber-400 fill-amber-400" />
+            <span className="hidden md:inline">60s Demo</span>
+          </button>
+        )}
+
+        {/* Auto-Heal & Standardize Wand Button */}
+        {activeDataset && onOpenAutoHeal && (
+          <button
+            onClick={onOpenAutoHeal}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-xs font-bold transition-all shadow-sm"
+            title="1-Click Auto-Heal data hygiene and formatting issues"
+          >
+            <Wand2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden lg:inline">Auto-Heal</span>
+          </button>
+        )}
+
         {/* AI Copilot Button */}
         {activeDataset && (
           <button

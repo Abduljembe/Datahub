@@ -30,12 +30,21 @@ export interface DataCopilotCleaningAction {
   description: string;
 }
 
+export interface DataCopilotChart {
+  chartType: 'bar' | 'line' | 'pie' | 'area';
+  title: string;
+  xKey: string;
+  yKey: string;
+  data: Array<{ name: string; value: number }>;
+}
+
 export interface DataCopilotResponse {
   narrative: string;
   keyTakeaways: string[];
   suggestedFilter?: DataCopilotFilter | null;
   suggestedComputedColumn?: DataCopilotComputedColumn | null;
   suggestedCleaningAction?: DataCopilotCleaningAction | null;
+  suggestedChart?: DataCopilotChart | null;
   suggestedSql?: string;
   followUpQuestions?: string[];
   isAiGenerated?: boolean;
@@ -106,6 +115,34 @@ export async function requestDataCopilotQuery(
     console.warn('Data Copilot network notice:', err?.message || err);
     // Intelligent local fallback
     const numCols = dataset.columns.filter(c => c.type === 'number');
+    const catCols = dataset.columns.filter(c => c.type === 'string');
+
+    // Dynamic Chart generator from real data
+    let suggestedChart: DataCopilotChart | null = null;
+    if (numCols.length > 0) {
+      const xCol = catCols[0]?.name || dataset.columns[0]?.name;
+      const yCol = numCols[0]?.name;
+      if (xCol && yCol) {
+        const aggregated: Record<string, number> = {};
+        dataset.data.slice(0, 40).forEach(r => {
+          const key = String(r[xCol] || 'Other').slice(0, 14);
+          const val = Number(r[yCol]) || 0;
+          aggregated[key] = (aggregated[key] || 0) + val;
+        });
+        const chartData = Object.entries(aggregated).slice(0, 7).map(([name, value]) => ({
+          name,
+          value: Math.round(value * 100) / 100
+        }));
+        suggestedChart = {
+          chartType: 'bar',
+          title: `${yCol} across ${xCol}`,
+          xKey: 'name',
+          yKey: 'value',
+          data: chartData
+        };
+      }
+    }
+
     return {
       narrative: `DataHub Copilot Intelligence: ${dataset.name}\n\nProcessed query: "${prompt}"\n\n• Sample Universe: ${dataset.data.length} records across ${dataset.columns.length} features\n• Quantitative Metrics: ${numCols.map(c => c.name).slice(0, 4).join(', ') || 'None'}\n\nReview correlation trends or run statistical hypothesis tests to isolate significant drivers.`,
       keyTakeaways: [
@@ -113,6 +150,7 @@ export async function requestDataCopilotQuery(
         'Distribution patterns show active central tendencies.',
         'Ready for query filtering and multivariate regression modeling.'
       ],
+      suggestedChart,
       suggestedSql: `SELECT * FROM "${dataset.name}" LIMIT 25;`,
       followUpQuestions: [
         `What are the strongest correlations with ${numCols[0]?.name || 'metric'}?`,

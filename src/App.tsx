@@ -51,6 +51,8 @@ import { MobileAllToolsSheet } from './components/mobile/MobileAllToolsSheet';
 import { Sidebar } from './components/Sidebar';
 import { CommandHeader } from './components/CommandHeader';
 import { AnalystWorkbench } from './components/dashboard/AnalystWorkbench';
+import { AutoHealModal } from './components/upload/AutoHealModal';
+import { FieldToBoardroomTourModal } from './components/simulation/FieldToBoardroomTourModal';
 import { Presentation, QrCode } from 'lucide-react';
 
 export default function App() {
@@ -89,6 +91,8 @@ export default function App() {
   const [isMobileAllToolsOpen, setIsMobileAllToolsOpen] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [isAutoHealOpen, setIsAutoHealOpen] = useState<boolean>(false);
+  const [isFieldTourOpen, setIsFieldTourOpen] = useState<boolean>(false);
   
   // Top-level Navigation & View Mode ('landing' | 'app') - Defaults directly to the All-in-One Workstation
   const [viewMode, setViewMode] = useState<'landing' | 'app'>(() => {
@@ -165,6 +169,19 @@ export default function App() {
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signin');
+
+  const handleSelectPersonaRole = (role: UserProfile['role'], tabToSwitch?: AppTab) => {
+    if (user) {
+      const updatedUser = { ...user, role };
+      setUser(updatedUser);
+      try {
+        localStorage.setItem('datahub_auth_user', JSON.stringify(updatedUser));
+      } catch {}
+    }
+    if (tabToSwitch) {
+      setActiveTab(tabToSwitch);
+    }
+  };
 
   const activeDataset: Dataset | null = datasets.find(d => d.id === activeDatasetId) || datasets[0] || null;
 
@@ -355,6 +372,9 @@ export default function App() {
               onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
               onNavigateTab={(tab) => setActiveTab(tab)}
               currentUser={user}
+              onOpenAutoHeal={() => setIsAutoHealOpen(true)}
+              onOpenFieldTour={() => setIsFieldTourOpen(true)}
+              onSelectPersonaRole={handleSelectPersonaRole}
             />
 
             {/* Focused Workspace View (Clean, Dedicated Studio Per Feature) */}
@@ -382,6 +402,8 @@ export default function App() {
                   onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
                   onOpenCommsHub={() => setIsCommsHubOpen(true)}
                   currentUser={user}
+                  onOpenAutoHeal={() => setIsAutoHealOpen(true)}
+                  onOpenFieldTour={() => setIsFieldTourOpen(true)}
                 />
               )}
 
@@ -629,6 +651,25 @@ export default function App() {
             onOpenDesktopExe={() => setIsDesktopExeOpen(true)}
             onOpenCopilot={() => setIsCopilotOpen(true)}
             onOpenTour={() => setIsTourOpen(true)}
+          />
+
+          {/* Modal: 1-Click Auto-Heal & Standardize Engine */}
+          <AutoHealModal
+            isOpen={isAutoHealOpen}
+            onClose={() => setIsAutoHealOpen(false)}
+            dataset={activeDataset}
+            onUpdateDataset={handleUpdateDataset}
+            onNavigateTab={(tab) => setActiveTab(tab as any)}
+          />
+
+          {/* Modal: 60-Second Field-to-Boardroom Interactive Demo */}
+          <FieldToBoardroomTourModal
+            isOpen={isFieldTourOpen}
+            onClose={() => setIsFieldTourOpen(false)}
+            dataset={activeDataset}
+            onAppendRowsToActive={handleAddRowsToDataset}
+            onNavigateTab={(tab) => setActiveTab(tab as any)}
+            onOpenSlideDeck={() => setIsSlideDeckOpen(true)}
           />
 
           {/* Floating AI Copilot Launcher */}

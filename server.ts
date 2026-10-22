@@ -1302,6 +1302,8 @@ If the user's request involves:
    Provide a "suggestedCleaningAction" object: { "type": "impute_median" | "impute_mean" | "drop_nulls" | "deduplicate", "column": string, "description": string }.
 4. Querying data:
    Provide "suggestedSql" containing a valid SQL query matching the request.
+5. Visualizing / Charting data (e.g. "plot", "chart", "distribution", "compare", "sales by", "rating by"):
+   Provide a "suggestedChart" object: { "chartType": "bar" | "line" | "pie" | "area", "title": string, "xKey": string, "yKey": string, "data": [{ "name": string, "value": number }] }.
 
 Output ONLY a valid JSON object matching this schema:
 {
@@ -1310,6 +1312,7 @@ Output ONLY a valid JSON object matching this schema:
   "suggestedFilter": null or object,
   "suggestedComputedColumn": null or object,
   "suggestedCleaningAction": null or object,
+  "suggestedChart": null or object,
   "suggestedSql": "SELECT ...",
   "followUpQuestions": ["Question 1", "Question 2", "Question 3"]
 }`;
@@ -1361,6 +1364,7 @@ Output ONLY a valid JSON object matching this schema:
         suggestedFilter: parsed.suggestedFilter || null,
         suggestedComputedColumn: parsed.suggestedComputedColumn || null,
         suggestedCleaningAction: parsed.suggestedCleaningAction || null,
+        suggestedChart: parsed.suggestedChart || null,
         suggestedSql: parsed.suggestedSql || `SELECT * FROM dataset LIMIT 25;`,
         followUpQuestions: Array.isArray(parsed.followUpQuestions)
           ? parsed.followUpQuestions.map((q: any) => sanitizeCopilotOutput(String(q)))

@@ -24,6 +24,7 @@ import confetti from 'canvas-confetti';
 import { Dataset, ColumnMeta, DatasetVersion } from '../../types';
 import { 
   requestDataCopilotQuery, 
+  cleanCopilotText,
   DataCopilotResponse, 
   DataCopilotFilter, 
   DataCopilotComputedColumn, 
@@ -93,7 +94,7 @@ export const AiDataCopilotModal: React.FC<AiDataCopilotModalProps> = ({
       const initWelcome: CopilotMessage = {
         id: 'msg_init_' + Date.now(),
         sender: 'ai',
-        text: `### 👋 Welcome to DataHub AI Copilot\n\nI am your **AI Statistical & Data Science Partner**. I have ingested **${dataset.name}** (${dataset.data.length.toLocaleString()} rows, ${dataset.columns.length} columns).\n\nYou can ask me natural language questions about your data, tell me to **filter rows**, request **feature engineering / computed columns**, or ask for an **executive narrative brief**.`,
+        text: `👋 Welcome to DataHub AI Copilot\n\nI am your AI Statistical & Data Science Partner. I have ingested ${dataset.name} (${dataset.data.length.toLocaleString()} rows, ${dataset.columns.length} columns).\n\nYou can ask me natural language questions about your data, tell me to filter rows, request feature engineering / computed columns, or ask for an executive narrative brief.`,
         keyTakeaways: [
           `Dataset: ${dataset.name}`,
           `${dataset.data.length} observations ready for natural language query`,
@@ -144,13 +145,13 @@ export const AiDataCopilotModal: React.FC<AiDataCopilotModalProps> = ({
       const aiMessage: CopilotMessage = {
         id: 'msg_ai_' + Date.now(),
         sender: 'ai',
-        text: res.narrative,
-        keyTakeaways: res.keyTakeaways,
+        text: cleanCopilotText(res.narrative),
+        keyTakeaways: res.keyTakeaways?.map(cleanCopilotText),
         suggestedFilter: res.suggestedFilter,
         suggestedComputedColumn: res.suggestedComputedColumn,
         suggestedCleaningAction: res.suggestedCleaningAction,
         suggestedSql: res.suggestedSql,
-        followUpQuestions: res.followUpQuestions,
+        followUpQuestions: res.followUpQuestions?.map(cleanCopilotText),
         isAiGenerated: res.isAiGenerated,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
@@ -160,7 +161,7 @@ export const AiDataCopilotModal: React.FC<AiDataCopilotModalProps> = ({
       const errMsg: CopilotMessage = {
         id: 'msg_err_' + Date.now(),
         sender: 'ai',
-        text: `### ⚠️ Notice\nCould not process the query through the upstream AI model. Please verify server connectivity or try another query.`,
+        text: `⚠️ Notice\nCould not process the query through the upstream AI model. Please verify server connectivity or try another query.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, errMsg]);
@@ -349,9 +350,63 @@ export const AiDataCopilotModal: React.FC<AiDataCopilotModalProps> = ({
   };
 
   const handleCopyText = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
+    const clean = cleanCopilotText(text);
+    navigator.clipboard.writeText(clean);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  // Clean and render Copilot text without ## or ** markdown symbols
+  const renderFormattedCopilotText = (rawText: string) => {
+    if (!rawText) return null;
+    const cleaned = cleanCopilotText(rawText);
+    const paragraphs = cleaned.split('\n\n');
+
+    return (
+      <div className="space-y-3 font-sans">
+        {paragraphs.map((para, pIdx) => {
+          const trimmed = para.trim();
+          if (!trimmed) return null;
+
+          // Detect if paragraph is a section header (e.g. "1. Correlation Drivers", "Statistical Analysis: ...", "Variance & Dispersion Analysis")
+          const isHeader = /^[0-9]+\.\s+[A-Za-z]/.test(trimmed) || 
+            (/^[A-Z][A-Za-z0-9\s&—\-:()]{3,70}$/.test(trimmed) && !trimmed.startsWith('•') && !trimmed.includes('. ') && trimmed.length < 65);
+
+          if (isHeader) {
+            return (
+              <div key={pIdx} className="font-bold text-xs sm:text-sm text-cyan-300 pt-1 tracking-tight">
+                {trimmed}
+              </div>
+            );
+          }
+
+          // Detect bullet lists
+          if (trimmed.startsWith('•') || trimmed.includes('\n•')) {
+            const lines = trimmed.split('\n');
+            return (
+              <ul key={pIdx} className="space-y-1.5 pl-0.5">
+                {lines.map((line, lIdx) => {
+                  const cleanLine = line.replace(/^[•\*\-]\s*/, '').trim();
+                  if (!cleanLine) return null;
+                  return (
+                    <li key={lIdx} className="flex items-start gap-2 text-xs sm:text-[13px] leading-relaxed text-slate-200">
+                      <span className="text-cyan-400 shrink-0 font-bold mt-0.5">•</span>
+                      <span>{cleanLine}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          }
+
+          return (
+            <p key={pIdx} className="leading-relaxed text-xs sm:text-[13px] text-slate-200 whitespace-pre-wrap">
+              {trimmed}
+            </p>
+          );
+        })}
+      </div>
+    );
   };
 
   const handleClearChat = () => {
@@ -504,8 +559,8 @@ export const AiDataCopilotModal: React.FC<AiDataCopilotModalProps> = ({
                   </div>
 
                   {/* Message Content */}
-                  <div className="space-y-2 whitespace-pre-wrap font-sans text-xs sm:text-[13px] leading-relaxed">
-                    {msg.text}
+                  <div className="space-y-2 font-sans text-xs sm:text-[13px] leading-relaxed">
+                    {renderFormattedCopilotText(msg.text)}
                   </div>
 
                   {/* Key Takeaways Bullets */}

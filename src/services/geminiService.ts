@@ -92,13 +92,22 @@ export async function requestDataCopilotQuery(
     }
 
     const data: DataCopilotResponse = await res.json();
-    return data;
+    return {
+      ...data,
+      narrative: cleanCopilotText(data.narrative),
+      keyTakeaways: Array.isArray(data.keyTakeaways)
+        ? data.keyTakeaways.map(t => cleanCopilotText(t))
+        : [],
+      followUpQuestions: Array.isArray(data.followUpQuestions)
+        ? data.followUpQuestions.map(q => cleanCopilotText(q))
+        : []
+    };
   } catch (err: any) {
     console.warn('Data Copilot network notice:', err?.message || err);
     // Intelligent local fallback
     const numCols = dataset.columns.filter(c => c.type === 'number');
     return {
-      narrative: `### 🤖 DataHub Copilot Intelligence: ${dataset.name}\n\nProcessed query: **"${prompt}"**\n\n- **Sample Universe**: ${dataset.data.length} records across ${dataset.columns.length} features\n- **Quantitative Metrics**: ${numCols.map(c => c.name).slice(0, 4).join(', ') || 'None'}\n\n*Review correlation trends or run statistical hypothesis tests to isolate significant drivers.*`,
+      narrative: `DataHub Copilot Intelligence: ${dataset.name}\n\nProcessed query: "${prompt}"\n\n• Sample Universe: ${dataset.data.length} records across ${dataset.columns.length} features\n• Quantitative Metrics: ${numCols.map(c => c.name).slice(0, 4).join(', ') || 'None'}\n\nReview correlation trends or run statistical hypothesis tests to isolate significant drivers.`,
       keyTakeaways: [
         `Evaluated ${dataset.data.length} rows and ${dataset.columns.length} columns.`,
         'Distribution patterns show active central tendencies.',
@@ -113,6 +122,20 @@ export async function requestDataCopilotQuery(
       isAiGenerated: false
     };
   }
+}
+
+export function cleanCopilotText(raw: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  return raw
+    // Strip markdown header hashes e.g. "### Title" or "#### 1. Drivers"
+    .replace(/^#{1,6}\s*/gm, '')
+    // Strip bold double asterisks e.g. "**Bold Text**" -> "Bold Text"
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    // Strip any residual double asterisks
+    .replace(/\*\*/g, '')
+    // Convert leading asterisks or dashes in bullet lists to clean bullets
+    .replace(/^[\*\-]\s+/gm, '• ')
+    .trim();
 }
 
 export async function requestDatasetAiAnalysis(

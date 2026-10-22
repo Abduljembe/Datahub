@@ -21,6 +21,7 @@ import confetti from 'canvas-confetti';
 import { Dataset, ColumnMeta } from '../../types';
 import { 
   requestDataCopilotQuery, 
+  cleanCopilotText,
   DataCopilotResponse, 
   DataCopilotFilter, 
   DataCopilotComputedColumn, 
@@ -93,13 +94,13 @@ export const AiAnalyst: React.FC<AiAnalystProps> = ({
           const welcomeMsg: ChatMessage = {
             id: 'msg_welcome_' + Date.now(),
             sender: 'ai',
-            text: res.narrative,
-            keyTakeaways: res.keyTakeaways,
+            text: cleanCopilotText(res.narrative),
+            keyTakeaways: res.keyTakeaways?.map(cleanCopilotText),
             suggestedFilter: res.suggestedFilter,
             suggestedComputedColumn: res.suggestedComputedColumn,
             suggestedCleaningAction: res.suggestedCleaningAction,
             suggestedSql: res.suggestedSql,
-            followUpQuestions: res.followUpQuestions,
+            followUpQuestions: res.followUpQuestions?.map(cleanCopilotText),
             isAiGenerated: res.isAiGenerated,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           };
@@ -111,7 +112,7 @@ export const AiAnalyst: React.FC<AiAnalystProps> = ({
             {
               id: 'msg_err',
               sender: 'ai',
-              text: `### Statistical Summary for ${dataset.name}\n\n- **Rows**: ${dataset.data.length}\n- **Features**: ${dataset.columns.length} columns\n\nAsk me any specific question about your data columns, statistical distributions, or request an automated filter rule!`,
+              text: `Statistical Summary for ${dataset.name}\n\n• Rows: ${dataset.data.length}\n• Features: ${dataset.columns.length} columns\n\nAsk me any specific question about your data columns, statistical distributions, or request an automated filter rule!`,
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             }
           ]);
@@ -150,13 +151,13 @@ export const AiAnalyst: React.FC<AiAnalystProps> = ({
       const aiMsg: ChatMessage = {
         id: 'msg_ai_' + Date.now(),
         sender: 'ai',
-        text: res.narrative,
-        keyTakeaways: res.keyTakeaways,
+        text: cleanCopilotText(res.narrative),
+        keyTakeaways: res.keyTakeaways?.map(cleanCopilotText),
         suggestedFilter: res.suggestedFilter,
         suggestedComputedColumn: res.suggestedComputedColumn,
         suggestedCleaningAction: res.suggestedCleaningAction,
         suggestedSql: res.suggestedSql,
-        followUpQuestions: res.followUpQuestions,
+        followUpQuestions: res.followUpQuestions?.map(cleanCopilotText),
         isAiGenerated: res.isAiGenerated,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
@@ -280,9 +281,60 @@ export const AiAnalyst: React.FC<AiAnalystProps> = ({
   };
 
   const handleCopy = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
+    const clean = cleanCopilotText(text);
+    navigator.clipboard.writeText(clean);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  const renderFormattedCopilotText = (rawText: string) => {
+    if (!rawText) return null;
+    const cleaned = cleanCopilotText(rawText);
+    const paragraphs = cleaned.split('\n\n');
+
+    return (
+      <div className="space-y-3 font-sans">
+        {paragraphs.map((para, pIdx) => {
+          const trimmed = para.trim();
+          if (!trimmed) return null;
+
+          const isHeader = /^[0-9]+\.\s+[A-Za-z]/.test(trimmed) || 
+            (/^[A-Z][A-Za-z0-9\s&—\-:()]{3,70}$/.test(trimmed) && !trimmed.startsWith('•') && !trimmed.includes('. ') && trimmed.length < 65);
+
+          if (isHeader) {
+            return (
+              <div key={pIdx} className="font-bold text-xs sm:text-sm text-cyan-300 pt-1 tracking-tight">
+                {trimmed}
+              </div>
+            );
+          }
+
+          if (trimmed.startsWith('•') || trimmed.includes('\n•')) {
+            const lines = trimmed.split('\n');
+            return (
+              <ul key={pIdx} className="space-y-1.5 pl-0.5">
+                {lines.map((line, lIdx) => {
+                  const cleanLine = line.replace(/^[•\*\-]\s*/, '').trim();
+                  if (!cleanLine) return null;
+                  return (
+                    <li key={lIdx} className="flex items-start gap-2 text-xs sm:text-[13px] leading-relaxed text-slate-200">
+                      <span className="text-cyan-400 shrink-0 font-bold mt-0.5">•</span>
+                      <span>{cleanLine}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          }
+
+          return (
+            <p key={pIdx} className="leading-relaxed text-xs sm:text-[13px] text-slate-200 whitespace-pre-wrap">
+              {trimmed}
+            </p>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
@@ -373,8 +425,8 @@ export const AiAnalyst: React.FC<AiAnalystProps> = ({
                   </div>
 
                   {/* Message Text */}
-                  <div className="space-y-2 whitespace-pre-wrap font-sans text-xs sm:text-[13px] leading-relaxed">
-                    {msg.text}
+                  <div className="space-y-2 font-sans text-xs sm:text-[13px] leading-relaxed">
+                    {renderFormattedCopilotText(msg.text)}
                   </div>
 
                   {/* Key Takeaways */}

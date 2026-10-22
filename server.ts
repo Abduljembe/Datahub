@@ -1203,34 +1203,45 @@ function generateHeuristicCopilotResponse(datasetSummary: any, prompt: string) {
     };
   }
 
-  // Build high-value Markdown response
-  let narrative = `### 🤖 DataHub Copilot Analysis: ${name}\n\n`;
-  narrative += `Based on your analytical query: **"${prompt}"**\n\n`;
-  narrative += `**Dataset Overview**: Evaluated **${rowCount.toLocaleString()}** records across **${cols.length}** variables.\n\n`;
+  // Helper to remove ## and ** markdown artifacts
+  const cleanMarkdownArtifacts = (str: string): string => {
+    if (!str || typeof str !== 'string') return '';
+    return str
+      .replace(/^#{1,6}\s*/gm, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*\*/g, '')
+      .replace(/^[\*\-]\s+/gm, '• ')
+      .trim();
+  };
+
+  // Build high-value clean response without ## or **
+  let narrative = `DataHub Copilot Analysis: ${name}\n\n`;
+  narrative += `Based on your analytical query: "${prompt}"\n\n`;
+  narrative += `Dataset Overview: Evaluated ${rowCount.toLocaleString()} records across ${cols.length} variables.\n\n`;
 
   if (suggestedFilter) {
-    narrative += `🔍 **Actionable Filter Detected**: I parsed your request into a high-performance filtering rule for \`${suggestedFilter.column}\`. You can execute this filter directly onto the dataset using the action button below.\n\n`;
+    narrative += `Actionable Filter Detected: I parsed your request into a high-performance filtering rule for ${suggestedFilter.column}. You can execute this filter directly onto the dataset using the action button below.\n\n`;
   }
   if (suggestedComputedColumn) {
-    narrative += `⚡ **Feature Engineering Suggestion**: Recommended computing \`${suggestedComputedColumn.name}\` using formula \`${suggestedComputedColumn.formula}\`.\n\n`;
+    narrative += `Feature Engineering Suggestion: Recommended computing ${suggestedComputedColumn.name} using formula ${suggestedComputedColumn.formula}.\n\n`;
   }
   if (numCols.length > 0) {
-    narrative += `**Primary Statistical Parameters**:\n`;
+    narrative += `Primary Statistical Parameters:\n`;
     numCols.slice(0, 3).forEach((c: any) => {
-      narrative += `- **\`${c.name}\`**: Mean = ${c.mean ?? 'N/A'}, StdDev = ${c.stdDev ?? 'N/A'}, Range = [${c.min ?? 0} — ${c.max ?? 0}]\n`;
+      narrative += `• ${c.name}: Mean = ${c.mean ?? 'N/A'}, StdDev = ${c.stdDev ?? 'N/A'}, Range = [${c.min ?? 0} — ${c.max ?? 0}]\n`;
     });
     narrative += `\n`;
   }
 
-  narrative += `**Strategic Recommendation**: Cross-reference high-variance distributions with downstream performance outcomes to detect underlying driver sensitivities.`;
+  narrative += `Strategic Recommendation: Cross-reference high-variance distributions with downstream performance outcomes to detect underlying driver sensitivities.`;
 
   return {
-    narrative,
+    narrative: cleanMarkdownArtifacts(narrative),
     keyTakeaways: [
       `Sample contains ${rowCount} observations across ${cols.length} dimensions.`,
       suggestedFilter ? `Recommended filter: ${suggestedFilter.description}` : 'Distributions show balanced central tendencies.',
       'Correlations indicate significant bivariate relationships between key numeric drivers.'
-    ],
+    ].map(cleanMarkdownArtifacts),
     suggestedFilter,
     suggestedComputedColumn,
     suggestedCleaningAction,
@@ -1259,9 +1270,28 @@ app.post('/api/gemini/copilot-query', async (req, res) => {
       return res.json(fallback);
     }
 
+    const sanitizeCopilotOutput = (text: string): string => {
+      if (!text || typeof text !== 'string') return '';
+      return text
+        // Strip markdown header markers e.g. "### Title" or "#### 1. Drivers"
+        .replace(/^#{1,6}\s*/gm, '')
+        // Strip bold markdown markers e.g. "**Bold Text**" -> "Bold Text"
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        // Strip any residual double asterisks
+        .replace(/\*\*/g, '')
+        // Clean asterisk bullet points to clean bullets
+        .replace(/^\*\s+/gm, '• ')
+        .trim();
+    };
+
     const systemInstruction = `You are DataHub Copilot, an elite Principal Data Scientist, AI Statistician, and Database Engineer.
 Analyze the provided dataset summary, statistics, correlation matrix, and sample rows.
 Respond to the user's prompt with mathematical rigor, clear explanations, and actionable intelligence.
+
+STRICT FORMATTING RULE:
+- NEVER use markdown heading hashes (DO NOT output #, ##, ###, or ####). Format section titles as clean, title-cased labels or numbered headers without any hash symbols.
+- NEVER wrap words in markdown double asterisks (DO NOT output **text**). Output clean, unbracketed plain text.
+- Use clean bullet points (•) for bulleted lists.
 
 If the user's request involves:
 1. Filtering rows (e.g. "show high earners", "filter where region is North", "find rows where X > Y"):
@@ -1275,7 +1305,7 @@ If the user's request involves:
 
 Output ONLY a valid JSON object matching this schema:
 {
-  "narrative": "Detailed, markdown-formatted explanation addressing the user's prompt directly with numbers and findings",
+  "narrative": "Detailed, clean explanation without any ## headers or ** asterisks addressing the user's prompt directly with numbers and findings",
   "keyTakeaways": ["Point 1", "Point 2", "Point 3"],
   "suggestedFilter": null or object,
   "suggestedComputedColumn": null or object,
@@ -1324,13 +1354,17 @@ Output ONLY a valid JSON object matching this schema:
 
     if (parsed && typeof parsed.narrative === 'string') {
       return res.json({
-        narrative: parsed.narrative,
-        keyTakeaways: Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways : [],
+        narrative: sanitizeCopilotOutput(parsed.narrative),
+        keyTakeaways: Array.isArray(parsed.keyTakeaways)
+          ? parsed.keyTakeaways.map((k: any) => sanitizeCopilotOutput(String(k)))
+          : [],
         suggestedFilter: parsed.suggestedFilter || null,
         suggestedComputedColumn: parsed.suggestedComputedColumn || null,
         suggestedCleaningAction: parsed.suggestedCleaningAction || null,
         suggestedSql: parsed.suggestedSql || `SELECT * FROM dataset LIMIT 25;`,
-        followUpQuestions: Array.isArray(parsed.followUpQuestions) ? parsed.followUpQuestions : [],
+        followUpQuestions: Array.isArray(parsed.followUpQuestions)
+          ? parsed.followUpQuestions.map((q: any) => sanitizeCopilotOutput(String(q)))
+          : [],
         isAiGenerated: true
       });
     }

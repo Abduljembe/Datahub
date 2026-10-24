@@ -53,7 +53,9 @@ import { CommandHeader } from './components/CommandHeader';
 import { AnalystWorkbench } from './components/dashboard/AnalystWorkbench';
 import { AutoHealModal } from './components/upload/AutoHealModal';
 import { FieldToBoardroomTourModal } from './components/simulation/FieldToBoardroomTourModal';
-import { Presentation, QrCode } from 'lucide-react';
+import { SecurityShieldModal } from './components/security/SecurityShieldModal';
+import { getSecurityConfig, verifyDatasetIntegrity } from './utils/securityEngine';
+import { Presentation, QrCode, ShieldAlert, AlertTriangle } from 'lucide-react';
 
 export default function App() {
   const { isDark } = useTheme();
@@ -93,6 +95,11 @@ export default function App() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isAutoHealOpen, setIsAutoHealOpen] = useState<boolean>(false);
   const [isFieldTourOpen, setIsFieldTourOpen] = useState<boolean>(false);
+  const [isSecurityShieldOpen, setIsSecurityShieldOpen] = useState<boolean>(false);
+  const [tamperAlert, setTamperAlert] = useState<string | null>(null);
+  const [isEmergencyLockdown, setIsEmergencyLockdown] = useState<boolean>(() => {
+    return getSecurityConfig().emergencyLockdown;
+  });
   
   // Top-level Navigation & View Mode ('landing' | 'app') - Defaults directly to the All-in-One Workstation
   const [viewMode, setViewMode] = useState<'landing' | 'app'>(() => {
@@ -184,6 +191,21 @@ export default function App() {
   };
 
   const activeDataset: Dataset | null = datasets.find(d => d.id === activeDatasetId) || datasets[0] || null;
+
+  // Verify Cryptographic SHA-256 seal whenever activeDataset is accessed
+  useEffect(() => {
+    if (activeDataset && activeDataset.securitySeal) {
+      verifyDatasetIntegrity(activeDataset).then(res => {
+        if (!res.isIntact) {
+          setTamperAlert(res.message);
+        } else {
+          setTamperAlert(null);
+        }
+      });
+    } else {
+      setTamperAlert(null);
+    }
+  }, [activeDataset?.id, activeDataset?.data?.length, activeDataset?.securitySeal?.sha256]);
 
   // Desktop keyboard shortcuts & native Electron app bridge
   useEffect(() => {
@@ -375,7 +397,52 @@ export default function App() {
               onOpenAutoHeal={() => setIsAutoHealOpen(true)}
               onOpenFieldTour={() => setIsFieldTourOpen(true)}
               onSelectPersonaRole={handleSelectPersonaRole}
+              onOpenSecurityShield={() => setIsSecurityShieldOpen(true)}
             />
+
+            {/* Cryptographic Tamper Alert Banner */}
+            {tamperAlert && (
+              <div className="mx-4 sm:mx-6 lg:mx-8 mt-4 p-3.5 rounded-2xl bg-rose-950/80 border border-rose-500/80 text-white flex items-center justify-between gap-3 animate-pulse shadow-lg shadow-rose-950/40">
+                <div className="flex items-center gap-2.5">
+                  <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-bold text-rose-200 uppercase tracking-wide">
+                      Tamper Alert: SHA-256 Checksum Mismatch
+                    </div>
+                    <div className="text-[11px] text-rose-300/90">{tamperAlert}</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsSecurityShieldOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shrink-0 transition-colors"
+                >
+                  Inspect Shield
+                </button>
+              </div>
+            )}
+
+            {/* Emergency Lockdown Notice Banner */}
+            {isEmergencyLockdown && (
+              <div className="mx-4 sm:mx-6 lg:mx-8 mt-4 p-3.5 rounded-2xl bg-amber-950/80 border border-amber-500/80 text-white flex items-center justify-between gap-3 shadow-lg shadow-amber-950/40">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <div className="text-xs font-bold text-amber-200 uppercase tracking-wide">
+                      Emergency Workstation Lockdown Active
+                    </div>
+                    <div className="text-[11px] text-amber-300/90">
+                      All dataset mutations, recipe applications, and deletions are frozen in Read-Only protection mode.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsSecurityShieldOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shrink-0 transition-colors"
+                >
+                  Manage Lockdown
+                </button>
+              </div>
+            )}
 
             {/* Focused Workspace View (Clean, Dedicated Studio Per Feature) */}
             <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto">
@@ -670,6 +737,18 @@ export default function App() {
             onAppendRowsToActive={handleAddRowsToDataset}
             onNavigateTab={(tab) => setActiveTab(tab as any)}
             onOpenSlideDeck={() => setIsSlideDeckOpen(true)}
+          />
+
+          {/* Modal: Workstation Security Shield & Cryptographic Anti-Tamper Engine */}
+          <SecurityShieldModal
+            isOpen={isSecurityShieldOpen}
+            onClose={() => {
+              setIsSecurityShieldOpen(false);
+              setIsEmergencyLockdown(getSecurityConfig().emergencyLockdown);
+            }}
+            dataset={activeDataset}
+            onUpdateDataset={handleUpdateDataset}
+            currentUser={user}
           />
 
           {/* Floating AI Copilot Launcher */}

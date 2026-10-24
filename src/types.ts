@@ -49,6 +49,16 @@ export interface DatasetVersion {
   changeSummary?: string;
 }
 
+export interface CryptographicSeal {
+  sha256: string;
+  sealedAt: string;
+  sealedBy: string;
+  rowCount: number;
+  columnCount: number;
+  tamperStatus: 'verified' | 'tampered' | 'unsealed';
+  lastVerifiedAt?: string;
+}
+
 export interface Dataset {
   id: string;
   name: string;
@@ -62,6 +72,9 @@ export interface Dataset {
   history?: DataTransformLog[];
   versions?: DatasetVersion[];
   currentVersionId?: string;
+  securitySeal?: CryptographicSeal;
+  isLocked?: boolean;
+  lockedReason?: string;
 }
 
 export type FormFieldType =
